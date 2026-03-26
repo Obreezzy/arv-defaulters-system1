@@ -1,341 +1,280 @@
-// backend/routes/patients.js
-// Handles patient registration and management
-
 const express = require('express');
-const { query } = require('../config/db');
-const { verifyToken, verifyRole } = require('../middleware/auth');
-
 const router = express.Router();
+const { query, getClient } = require('../config/db');
+const { verifyToken } = require('../middleware/auth');
 
-// All routes in this file require authentication
 router.use(verifyToken);
 
-// ============================================
-// ROUTE 1: REGISTER NEW PATIENT
-// ============================================
-
-// POST /api/patients
-// Purpose: Register a new patient in the system
-router.post('/', async (req, res) => {
+// ==========================================
+// 1. 🔮 PREDICT RISK FOR ALL PATIENTS
+// ==========================================
+router.post('/predict', async (req, res) => {
+    const client = await getClient();
     try {
-        const {
-            patient_number,
-            first_name,
-            last_name,
-            date_of_birth,
-            gender,
-            phone_number,
-            alternative_phone,
-            address,
-            distance_from_clinic,
-            emergency_contact_name,
-            emergency_contact_phone,
-            enrollment_date
-        } = req.body;
+        await client.query('BEGIN');
 
-        console.log('📝 Patient registration attempt:', patient_number);
+        const result = await client.query(`
+            SELECT patient_id, date_of_birth, distance_from_clinic, gender, address
+            FROM patients WHERE is_active = true
+        `);
 
-        // Validate required fields
-        if (!patient_number || !first_name || !last_name || !date_of_birth || !gender || !enrollment_date) {
-            return res.status(400).json({
-                success: false,
-                message: 'Please provide all required fields: patient_number, first_name, last_name, date_of_birth, gender, enrollment_date'
-            });
+        let updatedCount = 0;
+        for (const patient of result.rows) {
+            // Correct late pickup count using LAG window function
+            // A pickup is late if actual_pickup_date > the PREVIOUS row's next_pickup_date
+            const historyResult = await client.query(`
+                SELECT
+                    COUNT(*) AS total_pickups,
+                    COUNT(*) FILTER (
+                        WHERE actual_pickup_date > prev_scheduled
+                        AND prev_scheduled IS NOT NULL
+                    ) AS late_pickups
+                FROM (
+                    SELECT
+                        actual_pickup_date,
+                        LAG(next_pickup_date) OVER (ORDER BY actual_pickup_date) AS prev_scheduled
+                    FROM medication_pickups
+                    WHERE patient_id = $1
+                ) sub
+            `, [patient.patient_id]);
+
+            const prediction = predictRisk(patient, historyResult.rows[0]);
+            await client.query(`
+                UPDATE patients SET risk_score=$1, risk_level=$2, risk_factors=$3 WHERE patient_id=$4
+            `, [prediction.score, prediction.label, JSON.stringify(prediction.factors), patient.patient_id]);
+            updatedCount++;
         }
 
-        // Validate gender
-        if (!['Male', 'Female', 'Other'].includes(gender)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Gender must be Male, Female, or Other'
-            });
+        await client.query('COMMIT');
+        res.json({ success: true, message: `Analyzed ${updatedCount} patients` });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        res.status(500).json({ success: false, message: 'Prediction failed' });
+    } finally {
+        client.release();
+    }
+});
+
+// ==========================================
+// 2. GET ALL PATIENTS
+// ==========================================
+router.get('/', async (req, res) => {
+    try {
+        const result = await query(`
+            SELECT *, (first_name || ' ' || last_name) AS full_name
+            FROM patients
+            ORDER BY risk_score DESC, last_name ASC
+        `);
+        const data = result.rows.map(p => ({ ...p, risk_factors: parseFactors(p.risk_factors) }));
+        res.json({ success: true, data });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ==========================================
+// 3. CREATE PATIENT
+// ==========================================
+router.post('/', async (req, res) => {
+    const {
+        patient_number, first_name, last_name, date_of_birth, gender,
+        phone_number, alternative_phone, email, address, city,
+        distance_from_clinic, enrollment_date, arv_regimen,
+        pickup_frequency, next_pickup_date, is_new_patient,
+        emergency_contact_name, emergency_contact_phone
+    } = req.body;
+
+    // ══════════════════════════════════════════════════════
+    // DEBUG: Print the FULL req.user object to your terminal
+    // This tells us EXACTLY what field name the JWT uses
+    // Check your backend console after registering a patient
+    // ══════════════════════════════════════════════════════
+    console.log('🔑 ===== req.user DEBUG =====');
+    console.log(JSON.stringify(req.user, null, 2));
+    console.log('🔑 ============================');
+
+    // Try every known possible field name JWT middleware might use
+    const userId =
+        req.user?.id        ||   // most common (Express/jsonwebtoken default)
+        req.user?.user_id   ||   // snake_case variant
+        req.user?.userId    ||   // camelCase variant
+        req.user?.sub       ||   // JWT standard "subject" field
+        req.user?.ID        ||   // uppercase variant
+        null;
+
+    console.log('🔑 Extracted userId:', userId);
+
+    let createdByName = 'Unknown';
+
+    if (userId) {
+        try {
+            const userResult = await query(
+                `SELECT username, first_name, last_name FROM users WHERE user_id = $1`,
+                [userId]
+            );
+            if (userResult.rows.length > 0) {
+                const u = userResult.rows[0];
+                // Use "First Last" if names exist, otherwise fall back to username
+                createdByName = (u.first_name && u.last_name)
+                    ? `${u.first_name} ${u.last_name}`
+                    : u.username;
+                console.log('✅ createdByName:', createdByName);
+            } else {
+                console.warn(`⚠️ No user found in DB for userId=${userId}`);
+            }
+        } catch (e) {
+            console.error('User lookup failed:', e.message);
+        }
+    } else {
+        // If userId is still null, the field name is something we haven't tried
+        // The debug log above will show you the exact field name to add
+        console.warn('⚠️ Could not extract userId from req.user — see debug log above');
+    }
+
+    try {
+        const freq = parseInt(pickup_frequency) || 30;
+        let finalPickupDate = null;
+
+        if (is_new_patient === true || is_new_patient === 'true') {
+            // First-time patient: use the manually entered date
+            finalPickupDate = next_pickup_date || null;
+        } else {
+            // Returning patient: auto-calculate
+            const enrollDate = enrollment_date ? new Date(enrollment_date) : new Date();
+            const calc = new Date(enrollDate);
+            calc.setDate(calc.getDate() + freq);
+            finalPickupDate = calc.toISOString().split('T')[0];
         }
 
-        // Check if patient number already exists
-        const existingPatient = await query(
-            'SELECT patient_id FROM patients WHERE patient_number = $1',
-            [patient_number]
-        );
-
-        if (existingPatient.rows.length > 0) {
-            return res.status(409).json({
-                success: false,
-                message: 'Patient number already exists. Please use a unique patient number.'
-            });
-        }
-
-        // Insert patient
         const result = await query(
             `INSERT INTO patients (
                 patient_number, first_name, last_name, date_of_birth, gender,
-                phone_number, alternative_phone, address, distance_from_clinic,
-                emergency_contact_name, emergency_contact_phone, enrollment_date,
-                is_active, created_by
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-            RETURNING *`,
+                phone_number, alternative_phone, email, address, city,
+                distance_from_clinic, enrollment_date, arv_regimen,
+                pickup_frequency, next_pickup_date,
+                emergency_contact_name, emergency_contact_phone,
+                created_by
+            ) VALUES (
+                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+                $11,$12,$13,$14,$15,$16,$17,$18
+            ) RETURNING *`,
             [
-                patient_number, first_name, last_name, date_of_birth, gender,
-                phone_number || null, alternative_phone || null, address || null,
-                distance_from_clinic || null, emergency_contact_name || null,
-                emergency_contact_phone || null, enrollment_date, true, req.user.user_id
+                patient_number || `P-${Date.now()}`,
+                first_name, last_name, date_of_birth, gender,
+                phone_number,
+                alternative_phone    || null,
+                email                || null,
+                address              || null,
+                city                 || null,
+                distance_from_clinic || 0,
+                enrollment_date,
+                arv_regimen          || null,
+                freq,
+                finalPickupDate,
+                emergency_contact_name  || null,
+                emergency_contact_phone || null,
+                createdByName
             ]
         );
 
-        const newPatient = result.rows[0];
-
-        console.log('✅ Patient registered successfully:', newPatient.patient_id);
-
-        res.status(201).json({
-            success: true,
-            message: 'Patient registered successfully',
-            patient: newPatient
-        });
-
-    } catch (error) {
-        console.error('❌ Patient registration error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error registering patient',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+        res.json({ success: true, patient: result.rows[0] });
+    } catch (err) {
+        console.error('Create patient error:', err);
+        res.status(500).json({ success: false, message: err.message });
     }
 });
 
-// ============================================
-// ROUTE 2: GET ALL PATIENTS
-// ============================================
-
-// GET /api/patients
-// Purpose: Get list of all patients with pagination
-router.get('/', async (req, res) => {
-    try {
-        // Get query parameters for pagination and filtering
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 20;
-        const offset = (page - 1) * limit;
-        const search = req.query.search || '';
-        const active_only = req.query.active_only === 'true';
-
-        console.log('📋 Fetching patients - Page:', page, 'Limit:', limit);
-
-        // Build query
-        let queryText = `
-            SELECT p.*, u.full_name as registered_by_name
-            FROM patients p
-            LEFT JOIN users u ON p.created_by = u.user_id
-            WHERE 1=1
-        `;
-        
-        const queryParams = [];
-        let paramCount = 0;
-
-        // Add search filter
-        if (search) {
-            paramCount++;
-            queryText += ` AND (
-                p.patient_number ILIKE $${paramCount} OR
-                p.first_name ILIKE $${paramCount} OR
-                p.last_name ILIKE $${paramCount} OR
-                p.phone_number ILIKE $${paramCount}
-            )`;
-            queryParams.push(`%${search}%`);
-        }
-
-        // Add active filter
-        if (active_only) {
-            queryText += ` AND p.is_active = true`;
-        }
-
-        // Get total count
-        const countResult = await query(
-            queryText.replace('SELECT p.*, u.full_name as registered_by_name', 'SELECT COUNT(*) as total'),
-            queryParams
-        );
-        const totalPatients = parseInt(countResult.rows[0].total);
-
-        // Add pagination
-        queryText += ` ORDER BY p.created_at DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
-        queryParams.push(limit, offset);
-
-        // Get patients
-        const result = await query(queryText, queryParams);
-
-        res.json({
-            success: true,
-            message: 'Patients retrieved successfully',
-            pagination: {
-                page,
-                limit,
-                total: totalPatients,
-                totalPages: Math.ceil(totalPatients / limit)
-            },
-            patients: result.rows
-        });
-
-    } catch (error) {
-        console.error('❌ Error fetching patients:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching patients',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-});
-
-// ============================================
-// ROUTE 3: GET SINGLE PATIENT
-// ============================================
-
-// GET /api/patients/:id
-// Purpose: Get detailed information about a specific patient
+// ==========================================
+// 4. GET SINGLE PATIENT
+// ==========================================
 router.get('/:id', async (req, res) => {
     try {
-        const patientId = req.params.id;
-
-        console.log('👤 Fetching patient:', patientId);
-
-        const result = await query(
-            `SELECT p.*, u.full_name as registered_by_name
-             FROM patients p
-             LEFT JOIN users u ON p.created_by = u.user_id
-             WHERE p.patient_id = $1`,
-            [patientId]
-        );
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Patient not found'
-            });
-        }
-
-        res.json({
-            success: true,
-            message: 'Patient retrieved successfully',
-            patient: result.rows[0]
-        });
-
-    } catch (error) {
-        console.error('❌ Error fetching patient:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching patient',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+        const result = await query('SELECT * FROM patients WHERE patient_id = $1', [req.params.id]);
+        if (result.rows.length === 0)
+            return res.status(404).json({ success: false, message: 'Patient not found' });
+        res.json({ success: true, patient: result.rows[0] });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
     }
 });
 
-// ============================================
-// ROUTE 4: UPDATE PATIENT
-// ============================================
-
-// PUT /api/patients/:id
-// Purpose: Update patient information
+// ==========================================
+// 5. UPDATE PATIENT
+// ==========================================
 router.put('/:id', async (req, res) => {
+    const {
+        first_name, last_name, date_of_birth, gender, phone_number,
+        alternative_phone, email, address, city, distance_from_clinic,
+        arv_regimen, emergency_contact_name, emergency_contact_phone,
+        next_pickup_date, pickup_frequency
+    } = req.body;
+
     try {
-        const patientId = req.params.id;
-        const {
-            first_name,
-            last_name,
-            phone_number,
-            alternative_phone,
-            address,
-            distance_from_clinic,
-            emergency_contact_name,
-            emergency_contact_phone,
-            is_active
-        } = req.body;
-
-        console.log('✏️ Updating patient:', patientId);
-
-        // Check if patient exists
-        const existingPatient = await query(
-            'SELECT patient_id FROM patients WHERE patient_id = $1',
-            [patientId]
-        );
-
-        if (existingPatient.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Patient not found'
-            });
-        }
-
-        // Update patient
         const result = await query(
             `UPDATE patients SET
-                first_name = COALESCE($1, first_name),
-                last_name = COALESCE($2, last_name),
-                phone_number = COALESCE($3, phone_number),
-                alternative_phone = $4,
-                address = $5,
-                distance_from_clinic = $6,
-                emergency_contact_name = $7,
-                emergency_contact_phone = $8,
-                is_active = COALESCE($9, is_active),
-                updated_at = CURRENT_TIMESTAMP
-             WHERE patient_id = $10
-             RETURNING *`,
+                first_name=$1, last_name=$2, date_of_birth=$3, gender=$4,
+                phone_number=$5, alternative_phone=$6, email=$7,
+                address=$8, city=$9, distance_from_clinic=$10,
+                arv_regimen=$11, emergency_contact_name=$12,
+                emergency_contact_phone=$13, next_pickup_date=$14,
+                pickup_frequency=$15
+             WHERE patient_id=$16 RETURNING *`,
             [
-                first_name, last_name, phone_number, alternative_phone,
-                address, distance_from_clinic, emergency_contact_name,
-                emergency_contact_phone, is_active, patientId
+                first_name, last_name, date_of_birth, gender, phone_number,
+                alternative_phone    || null,
+                email                || null,
+                address              || null,
+                city                 || null,
+                distance_from_clinic,
+                arv_regimen          || null,
+                emergency_contact_name  || null,
+                emergency_contact_phone || null,
+                next_pickup_date     || null,
+                pickup_frequency     || 30,
+                req.params.id
             ]
         );
-
-        console.log('✅ Patient updated successfully:', patientId);
-
-        res.json({
-            success: true,
-            message: 'Patient updated successfully',
-            patient: result.rows[0]
-        });
-
-    } catch (error) {
-        console.error('❌ Error updating patient:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error updating patient',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+        res.json({ success: true, patient: result.rows[0] });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
     }
 });
 
-// ============================================
-// ROUTE 5: GET PATIENT STATISTICS
-// ============================================
+// ==========================================
+// 🧠 PREDICTIVE LOGIC
+// ==========================================
+const predictRisk = (patient, history) => {
+    let score = 0, factors = [];
+    const distance = isNaN(parseFloat(patient.distance_from_clinic)) ? 0 : parseFloat(patient.distance_from_clinic);
+    const age = getAge(patient.date_of_birth);
+    const latePickups = parseInt(history.late_pickups) || 0;
 
-// GET /api/patients/stats/summary
-// Purpose: Get summary statistics about patients
-router.get('/stats/summary', async (req, res) => {
+    if (latePickups > 2)     { score += 40; factors.push("Chronic Defaulter (Late 3+ times)"); }
+    else if (latePickups === 2) { score += 25; factors.push("History of late pickups (2 times)"); }
+    else if (latePickups === 1) { score += 10; factors.push("First-time late pickup"); }
+
+    if (distance > 25)      { score += 30; factors.push("Extreme Distance (>25km)"); }
+    else if (distance > 15) { score += 15; factors.push("Long Distance (>15km)"); }
+
+    if (age >= 18 && age <= 24) { score += 20; factors.push("High-Risk Age Group (18-24)"); }
+    else if (age > 70)          { score += 10; factors.push("Geriatric Vulnerability"); }
+
+    score = Math.min(score, 100);
+    let label = score >= 50 ? 'High' : score >= 25 ? 'Medium' : 'Low';
+    return { score, label, factors };
+};
+
+const getAge = (dob) => {
+    if (!dob) return 30;
+    const d = new Date(dob);
+    return isNaN(d.getTime()) ? 30 : new Date().getFullYear() - d.getFullYear();
+};
+
+const parseFactors = (factors) => {
     try {
-        console.log('📊 Fetching patient statistics');
-
-        const stats = await query(`
-            SELECT
-                COUNT(*) as total_patients,
-                COUNT(*) FILTER (WHERE is_active = true) as active_patients,
-                COUNT(*) FILTER (WHERE is_active = false) as inactive_patients,
-                COUNT(*) FILTER (WHERE gender = 'Male') as male_patients,
-                COUNT(*) FILTER (WHERE gender = 'Female') as female_patients,
-                COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE - INTERVAL '30 days') as new_this_month
-            FROM patients
-        `);
-
-        res.json({
-            success: true,
-            message: 'Statistics retrieved successfully',
-            stats: stats.rows[0]
-        });
-
-    } catch (error) {
-        console.error('❌ Error fetching statistics:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching statistics',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-});
+        if (!factors) return [];
+        return typeof factors === 'string' ? JSON.parse(factors) : factors;
+    } catch (e) { return []; }
+};
 
 module.exports = router;

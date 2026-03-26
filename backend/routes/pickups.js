@@ -1,287 +1,271 @@
-// backend/routes/pickups.js
-// Handles medication pickup recording and tracking
-
 const express = require('express');
-const { query, getClient } = require('../config/db');
-const { verifyToken } = require('../middleware/auth');
-
 const router = express.Router();
+const db = require('../config/db');
 
-// All routes require authentication
-router.use(verifyToken);
-
-// ============================================
-// ROUTE 1: RECORD MEDICATION PICKUP
-// ============================================
-
-// POST /api/pickups
-// Purpose: Record when a patient collects their medication
-router.post('/', async (req, res) => {
-    const client = await getClient();
-    
-    try {
-        await client.query('BEGIN');
-        
-        const {
-            patient_id,
-            treatment_id,
-            actual_pickup_date,
-            days_supply,
-            quantity_dispensed,
-            notes
-        } = req.body;
-
-        console.log('💊 Recording pickup for patient:', patient_id);
-
-        // Validate required fields
-        if (!patient_id || !treatment_id || !actual_pickup_date || !days_supply) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({
-                success: false,
-                message: 'Required fields: patient_id, treatment_id, actual_pickup_date, days_supply'
-            });
-        }
-
-        // Check if patient exists
-        const patientCheck = await client.query(
-            'SELECT patient_id, first_name, last_name FROM patients WHERE patient_id = $1',
-            [patient_id]
-        );
-
-        if (patientCheck.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return res.status(404).json({
-                success: false,
-                message: 'Patient not found'
-            });
-        }
-
-        // Calculate next pickup date
-        const pickupDate = new Date(actual_pickup_date);
-        const nextPickupDate = new Date(pickupDate);
-        nextPickupDate.setDate(nextPickupDate.getDate() + parseInt(days_supply));
-        
-        const scheduledDate = nextPickupDate.toISOString().split('T')[0];
-
-        // Insert pickup record
-        const pickupResult = await client.query(
-            `INSERT INTO medication_pickups (
-                patient_id, treatment_id, scheduled_date, actual_pickup_date,
-                next_pickup_date, quantity_dispensed, days_supply, notes, recorded_by
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            RETURNING *`,
-            [
-                patient_id, treatment_id, scheduledDate, actual_pickup_date,
-                scheduledDate, quantity_dispensed || null, days_supply,
-                notes || null, req.user.user_id
-            ]
-        );
-
-        const pickup = pickupResult.rows[0];
-
-        // Check if patient was flagged as defaulter and resolve it
-        const defaulterCheck = await client.query(
-            `SELECT defaulter_id FROM defaulters 
-             WHERE patient_id = $1 AND status = 'pending'`,
-            [patient_id]
-        );
-
-        if (defaulterCheck.rows.length > 0) {
-            await client.query(
-                `UPDATE defaulters SET
-                    status = 'returned',
-                    resolved_date = CURRENT_TIMESTAMP,
-                    resolved_by = $1
-                 WHERE patient_id = $2 AND status = 'pending'`,
-                [req.user.user_id, patient_id]
-            );
-            console.log('✅ Patient removed from defaulter list');
-        }
-
-        await client.query('COMMIT');
-
-        console.log('✅ Pickup recorded successfully:', pickup.pickup_id);
-
-        res.status(201).json({
-            success: true,
-            message: 'Medication pickup recorded successfully',
-            pickup: {
-                ...pickup,
-                next_pickup_date_display: convertToDisplayDate(pickup.next_pickup_date)
-            }
-        });
-
-    } catch (error) {
-        await client.query('ROLLBACK');
-        console.error('❌ Pickup recording error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error recording pickup',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    } finally {
-        client.release();
-    }
-});
-
-// ============================================
-// ROUTE 2: GET PATIENT PICKUP HISTORY
-// ============================================
-
-// GET /api/pickups/patient/:patient_id
-// Purpose: Get all pickups for a specific patient
-router.get('/patient/:patient_id', async (req, res) => {
-    try {
-        const patientId = req.params.patient_id;
-
-        console.log('📋 Fetching pickup history for patient:', patientId);
-
-        const result = await query(
-            `SELECT 
-                mp.*,
-                p.first_name, p.last_name, p.patient_number,
-                u.full_name as recorded_by_name
-             FROM medication_pickups mp
-             JOIN patients p ON mp.patient_id = p.patient_id
-             LEFT JOIN users u ON mp.recorded_by = u.user_id
-             WHERE mp.patient_id = $1
-             ORDER BY mp.actual_pickup_date DESC`,
-            [patientId]
-        );
-
-        // Convert dates to display format
-        const pickups = result.rows.map(pickup => ({
-            ...pickup,
-            actual_pickup_date_display: convertToDisplayDate(pickup.actual_pickup_date),
-            next_pickup_date_display: convertToDisplayDate(pickup.next_pickup_date),
-            scheduled_date_display: convertToDisplayDate(pickup.scheduled_date)
-        }));
-
-        res.json({
-            success: true,
-            message: 'Pickup history retrieved successfully',
-            count: pickups.length,
-            pickups: pickups
-        });
-
-    } catch (error) {
-        console.error('❌ Error fetching pickup history:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching pickup history',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-});
-
-// ============================================
-// ROUTE 3: GET RECENT PICKUPS
-// ============================================
-
-// GET /api/pickups/recent
-// Purpose: Get recent pickups across all patients
-router.get('/recent', async (req, res) => {
-    try {
-        const limit = parseInt(req.query.limit) || 20;
-
-        console.log('📋 Fetching recent pickups');
-
-        const result = await query(
-            `SELECT 
-                mp.*,
-                p.first_name, p.last_name, p.patient_number, p.phone_number,
-                u.full_name as recorded_by_name
-             FROM medication_pickups mp
-             JOIN patients p ON mp.patient_id = p.patient_id
-             LEFT JOIN users u ON mp.recorded_by = u.user_id
-             ORDER BY mp.created_at DESC
-             LIMIT $1`,
-            [limit]
-        );
-
-        // Convert dates
-        const pickups = result.rows.map(pickup => ({
-            ...pickup,
-            actual_pickup_date_display: convertToDisplayDate(pickup.actual_pickup_date),
-            next_pickup_date_display: convertToDisplayDate(pickup.next_pickup_date)
-        }));
-
-        res.json({
-            success: true,
-            message: 'Recent pickups retrieved successfully',
-            pickups: pickups
-        });
-
-    } catch (error) {
-        console.error('❌ Error fetching recent pickups:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching recent pickups',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-});
-
-// ============================================
-// ROUTE 4: GET UPCOMING PICKUPS
-// ============================================
-
-// GET /api/pickups/upcoming
-// Purpose: Get patients with upcoming pickups (next 7 days)
-router.get('/upcoming', async (req, res) => {
-    try {
-        const days = parseInt(req.query.days) || 7;
-
-        console.log(`📅 Fetching upcoming pickups (next ${days} days)`);
-
-        const result = await query(
-            `SELECT DISTINCT ON (p.patient_id)
-                p.patient_id, p.patient_number, p.first_name, p.last_name,
-                p.phone_number, mp.next_pickup_date,
-                CURRENT_DATE - mp.next_pickup_date as days_until
-             FROM patients p
-             JOIN medication_pickups mp ON p.patient_id = mp.patient_id
-             WHERE mp.next_pickup_date BETWEEN CURRENT_DATE AND CURRENT_DATE + $1
-             AND p.is_active = true
-             ORDER BY p.patient_id, mp.next_pickup_date DESC`,
-            [days]
-        );
-
-        // Convert dates
-        const upcoming = result.rows.map(item => ({
-            ...item,
-            next_pickup_date_display: convertToDisplayDate(item.next_pickup_date)
-        }));
-
-        res.json({
-            success: true,
-            message: 'Upcoming pickups retrieved successfully',
-            count: upcoming.length,
-            upcoming: upcoming
-        });
-
-    } catch (error) {
-        console.error('❌ Error fetching upcoming pickups:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching upcoming pickups',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-});
-
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
-
-// Convert YYYY-MM-DD to DD-MM-YYYY
-const convertToDisplayDate = (yyyymmdd) => {
-    if (!yyyymmdd) return '';
-    const date = new Date(yyyymmdd);
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}-${month}-${year}`;
+/**
+ * Helper: Auto-calculate next pickup date from pickup date + frequency
+ */
+const calculateNextPickupDate = (pickupDate, frequencyDays) => {
+  const date = new Date(pickupDate);
+  date.setDate(date.getDate() + parseInt(frequencyDays));
+  return date.toISOString().split('T')[0]; // Returns YYYY-MM-DD
 };
+
+/**
+ * POST /api/pickups/record
+ * Record a medication pickup — auto-calculates next pickup date
+ */
+router.post('/record', async (req, res) => {
+  try {
+    const { patient_id, pickup_date, next_pickup_date, quantity_dispensed, notes } = req.body;
+
+    console.log('📅 Recording pickup - received data:', {
+      patient_id, pickup_date, next_pickup_date, quantity_dispensed, notes
+    });
+
+    // Validate required fields
+    if (!patient_id) return res.status(400).json({ success: false, message: 'patient_id is required' });
+    if (!pickup_date) return res.status(400).json({ success: false, message: 'pickup_date is required' });
+
+    // Check if patient exists and get their pickup frequency
+    const patientCheck = await db.query(
+      'SELECT patient_id, first_name, last_name, pickup_frequency FROM patients WHERE patient_id = $1',
+      [patient_id]
+    );
+
+    if (patientCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Patient not found' });
+    }
+
+    const patient = patientCheck.rows[0];
+    console.log('✅ Found patient:', patient.first_name, patient.last_name);
+
+    // AUTO-CALCULATE next pickup date from patient's frequency
+    // If frontend sends next_pickup_date manually, use it, otherwise auto-calculate
+    const frequency = patient.pickup_frequency || 30;
+    const computed_next_pickup = next_pickup_date || calculateNextPickupDate(pickup_date, frequency);
+
+    console.log(`📅 Pickup frequency: ${frequency} days`);
+    console.log(`📅 Next pickup date: ${computed_next_pickup}`);
+
+    // Calculate days supply
+    const pickupDateObj = new Date(pickup_date);
+    const nextPickupDateObj = new Date(computed_next_pickup);
+    const days_supply = Math.ceil((nextPickupDateObj - pickupDateObj) / (1000 * 60 * 60 * 24));
+
+    // Get treatment_id from patient_treatments
+    let treatment_id = null;
+    try {
+      const treatmentCheck = await db.query(
+        'SELECT treatment_id FROM patient_treatments WHERE patient_id = $1 AND is_current = true LIMIT 1',
+        [patient_id]
+      );
+
+      if (treatmentCheck.rows.length > 0) {
+        treatment_id = treatmentCheck.rows[0].treatment_id;
+        console.log('✅ Found treatment_id:', treatment_id);
+      } else {
+        const anyTreatment = await db.query(
+          'SELECT treatment_id FROM patient_treatments WHERE patient_id = $1 ORDER BY treatment_id DESC LIMIT 1',
+          [patient_id]
+        );
+        if (anyTreatment.rows.length > 0) {
+          treatment_id = anyTreatment.rows[0].treatment_id;
+          console.log('✅ Using latest treatment_id:', treatment_id);
+        }
+      }
+    } catch (e) {
+      console.log('⚠️ Could not find treatment:', e.message);
+    }
+
+    if (!treatment_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'No treatment record found for this patient. Please assign a treatment first.'
+      });
+    }
+
+    // Insert pickup record
+    const insertQuery = `
+      INSERT INTO medication_pickups (
+        patient_id, treatment_id, scheduled_date, actual_pickup_date,
+        next_pickup_date, quantity_dispensed, days_supply, notes
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING *
+    `;
+
+    const values = [
+      patient_id,
+      treatment_id,
+      pickup_date,
+      pickup_date,
+      computed_next_pickup,
+      quantity_dispensed || 30,
+      days_supply,
+      notes || null
+    ];
+
+    const result = await db.query(insertQuery, values);
+    const pickup_record = result.rows[0];
+    console.log('✅ Pickup recorded! ID:', pickup_record.pickup_id);
+
+    // Remove from defaulters if applicable
+    try {
+      await db.query(
+        'UPDATE defaulters SET status = $1, resolved_date = CURRENT_TIMESTAMP WHERE patient_id = $2 AND status = $3',
+        ['returned', patient_id, 'pending']
+      );
+    } catch (e) {
+      console.log('ℹ️ Defaulters update skipped:', e.message);
+    }
+
+    res.json({
+      success: true,
+      message: 'Medication pickup recorded successfully',
+      pickup: {
+        pickup_id: pickup_record.pickup_id,
+        patient_id: pickup_record.patient_id,
+        pickup_date: pickup_record.actual_pickup_date,
+        next_pickup_date: pickup_record.next_pickup_date,
+        days_supply: pickup_record.days_supply,
+        quantity_dispensed: pickup_record.quantity_dispensed,
+        notes: pickup_record.notes
+      },
+      patient: {
+        patient_id: patient.patient_id,
+        first_name: patient.first_name,
+        last_name: patient.last_name
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error recording pickup:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while recording pickup',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+/**
+ * POST /api/pickups/set-first-pickup
+ * Set the first pickup date manually for a new patient
+ */
+router.post('/set-first-pickup', async (req, res) => {
+  try {
+    const { patient_id, first_pickup_date } = req.body;
+
+    if (!patient_id || !first_pickup_date) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'patient_id and first_pickup_date are required' 
+      });
+    }
+
+    // Check patient exists
+    const patientCheck = await db.query(
+      'SELECT patient_id, first_name, last_name FROM patients WHERE patient_id = $1',
+      [patient_id]
+    );
+
+    if (patientCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Patient not found' });
+    }
+
+    // Save first pickup date directly on the patient record
+    await db.query(
+      'UPDATE patients SET next_pickup_date = $1 WHERE patient_id = $2',
+      [first_pickup_date, patient_id]
+    );
+
+    const patient = patientCheck.rows[0];
+    console.log(`✅ First pickup date set for ${patient.first_name} ${patient.last_name}: ${first_pickup_date}`);
+
+    res.json({
+      success: true,
+      message: `First pickup date set to ${first_pickup_date}`,
+      patient_id,
+      first_pickup_date
+    });
+
+  } catch (error) {
+    console.error('❌ Error setting first pickup date:', error.message);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error while setting first pickup date' 
+    });
+  }
+});
+
+/**
+ * GET /api/pickups/recent
+ */
+router.get('/recent', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 20;
+    const result = await db.query(`
+      SELECT mp.pickup_id, mp.patient_id, mp.actual_pickup_date, mp.next_pickup_date,
+             mp.days_supply, mp.quantity_dispensed, mp.notes, mp.created_at,
+             p.first_name, p.last_name, p.patient_number
+      FROM medication_pickups mp
+      JOIN patients p ON mp.patient_id = p.patient_id
+      ORDER BY mp.created_at DESC
+      LIMIT $1
+    `, [limit]);
+
+    res.json({ success: true, count: result.rows.length, pickups: result.rows });
+  } catch (error) {
+    console.error('❌ Error fetching recent pickups:', error);
+    res.status(500).json({ success: false, message: 'Error fetching recent pickups' });
+  }
+});
+
+/**
+ * GET /api/pickups/patient/:patient_id
+ */
+router.get('/patient/:patient_id', async (req, res) => {
+  try {
+    const { patient_id } = req.params;
+    const result = await db.query(`
+      SELECT mp.pickup_id, mp.actual_pickup_date, mp.next_pickup_date,
+             mp.days_supply, mp.quantity_dispensed, mp.notes, mp.created_at,
+             p.first_name, p.last_name, p.patient_number
+      FROM medication_pickups mp
+      JOIN patients p ON mp.patient_id = p.patient_id
+      WHERE mp.patient_id = $1
+      ORDER BY mp.actual_pickup_date DESC
+    `, [patient_id]);
+
+    res.json({ success: true, count: result.rows.length, pickups: result.rows });
+  } catch (error) {
+    console.error('❌ Error fetching patient pickup history:', error);
+    res.status(500).json({ success: false, message: 'Error fetching pickup history' });
+  }
+});
+
+/**
+ * GET /api/pickups/upcoming
+ */
+router.get('/upcoming', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 7;
+    const result = await db.query(`
+      SELECT DISTINCT ON (p.patient_id)
+        p.patient_id, p.patient_number, p.first_name, p.last_name, p.phone_number,
+        mp.next_pickup_date,
+        mp.next_pickup_date - CURRENT_DATE as days_until
+      FROM patients p
+      JOIN medication_pickups mp ON p.patient_id = mp.patient_id
+      WHERE mp.next_pickup_date BETWEEN CURRENT_DATE AND CURRENT_DATE + $1
+      ORDER BY p.patient_id, mp.next_pickup_date DESC
+    `, [days]);
+
+    res.json({ success: true, count: result.rows.length, upcoming: result.rows });
+  } catch (error) {
+    console.error('❌ Error fetching upcoming pickups:', error);
+    res.status(500).json({ success: false, message: 'Error fetching upcoming pickups' });
+  }
+});
 
 module.exports = router;

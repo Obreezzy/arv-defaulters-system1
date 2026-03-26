@@ -1,0 +1,105 @@
+.pickup-modal {
+    max-width: 550px;
+    overflow: visible;
+}
+
+/* Search Styles */
+.search-input {
+    width: 100%;
+    padding: 1rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 1.1rem;
+    outline: none;
+    transition: all 0.2s;
+}
+
+.search-input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.search-results-list {
+    margin-top: 1rem;
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #f1f5f9;
+    border-radius: 8px;
+}
+
+.patient-search-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.patient-search-item:hover {
+    background-color: #f8fafc;
+}
+
+.p-avatar {
+    width: 40px;
+    height: 40px;
+    background: #e0f2fe;
+    color: #0369a1;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+
+.p-details {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.p-details strong { color: #334155; }
+.p-details span { font-size: 0.8rem; color: #64748b; }
+
+.btn-select {
+    background: white;
+    border: 1px solid #cbd5e1;
+    padding: 0.25rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    color: #475569;
+}
+
+.search-empty-state {
+    padding: 2rem;
+    text-align: center;
+    color: #94a3b8;
+}
+
+/* Selected Patient Summary */
+.selected-patient-summary {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    padding: 1rem;
+    border-radius: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.btn-change-patient {
+    background: white;
+    border: 1px solid #86efac;
+    color: #166534;
+    padding: 0.25rem 0.75rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.btn-change-patient:hover {
+    background: #dcfce7;
+}

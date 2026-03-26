@@ -1,0 +1,64 @@
+.stat-card {
+  background-color: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  padding: 1.5rem;
+  border-left: 5px solid;
+  transition: transform 0.2s, box-shadow 0.2s;
+  height: 100%; /* Fill container */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+.stat-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.stat-text {
+  flex: 1;
+}
+
+.stat-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  margin-bottom: 0.5rem;
+}
+
+.stat-value {
+  font-size: 2.25rem; /* Bigger numbers */
+  font-weight: 800;
+  color: #1e293b;
+  line-height: 1.1;
+}
+
+.stat-change {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.stat-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px; /* Soft square looks more modern than circle */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  flex-shrink: 0;
+}

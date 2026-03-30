@@ -81,6 +81,7 @@ function Defaulters() {
       </div>
 
       <div className="table-container">
+        <div className="table-scroll">
         {defaulters.length === 0 && !loading ? (
             <div className="empty-state">
                 <div className="empty-icon">🎉</div>
@@ -140,6 +141,7 @@ function Defaulters() {
         )}
       </div>
 
+      </div>
       {resolvingDefaulter && (
           <ResolveModal 
               defaulter={resolvingDefaulter} 

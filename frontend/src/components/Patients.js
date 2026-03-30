@@ -163,6 +163,7 @@ function Patients({ initialRiskFilter = 'All' }) {
       </div>
 
       <div className="table-container">
+        <div className="table-scroll">
         {filteredPatients.length === 0 && !loading ? (
             <div className="empty-state">
                 <h3>No patients found</h3>
@@ -248,6 +249,7 @@ function Patients({ initialRiskFilter = 'All' }) {
         )}
       </div>
       
+      </div>
       {showModal && <PatientFormModal onClose={() => setShowModal(false)} onSuccess={loadPatients} />}
       {selectedPatient && <PatientDetailsModal patient={selectedPatient} onClose={() => setSelectedPatient(null)} onEdit={(p) => { setSelectedPatient(null); setEditingPatient(p); }} />}
       {editingPatient && <PatientEditForm patient={editingPatient} onClose={() => setEditingPatient(null)} onSuccess={() => { setEditingPatient(null); loadPatients(); }} />}

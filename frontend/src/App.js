@@ -103,7 +103,7 @@ function AppContent() {
               {user?.full_name?.charAt(0) || user?.username?.charAt(0) || 'H'}
             </div>
             
-            <span>{user?.full_name || user?.username || 'Healthcare Worker'}</span>
+            <span className="user-name">{user?.full_name || user?.username || 'Healthcare Worker'}</span>
             
             <button className="btn-logout" onClick={handleLogout}>Logout</button>
           </div>

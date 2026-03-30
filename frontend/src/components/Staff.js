@@ -54,6 +54,7 @@ function Staff() {
       </div>
 
       <div className="table-container">
+        <div className="table-scroll">
         <table className="staff-table">
             <thead>
                 <tr>
@@ -96,6 +97,7 @@ function Staff() {
                 ))}
             </tbody>
         </table>
+        </div>
       </div>
 
       {showModal && <StaffForm onClose={() => setShowModal(false)} onSuccess={loadUsers} />}

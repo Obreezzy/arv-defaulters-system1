@@ -20,8 +20,6 @@ router.post('/predict', async (req, res) => {
 
         let updatedCount = 0;
         for (const patient of result.rows) {
-            // Correct late pickup count using LAG window function
-            // A pickup is late if actual_pickup_date > the PREVIOUS row's next_pickup_date
             const historyResult = await client.query(`
                 SELECT
                     COUNT(*) AS total_pickups,
@@ -56,13 +54,16 @@ router.post('/predict', async (req, res) => {
 });
 
 // ==========================================
-// 2. GET ALL PATIENTS
+// 2. GET ALL PATIENTS (excludes active defaulters)
 // ==========================================
 router.get('/', async (req, res) => {
     try {
         const result = await query(`
             SELECT *, (first_name || ' ' || last_name) AS full_name
             FROM patients
+            WHERE patient_id NOT IN (
+                SELECT patient_id FROM defaulters WHERE status = 'pending'
+            )
             ORDER BY risk_score DESC, last_name ASC
         `);
         const data = result.rows.map(p => ({ ...p, risk_factors: parseFactors(p.risk_factors) }));
@@ -84,25 +85,13 @@ router.post('/', async (req, res) => {
         emergency_contact_name, emergency_contact_phone
     } = req.body;
 
-    // ══════════════════════════════════════════════════════
-    // DEBUG: Print the FULL req.user object to your terminal
-    // This tells us EXACTLY what field name the JWT uses
-    // Check your backend console after registering a patient
-    // ══════════════════════════════════════════════════════
-    console.log('🔑 ===== req.user DEBUG =====');
-    console.log(JSON.stringify(req.user, null, 2));
-    console.log('🔑 ============================');
-
-    // Try every known possible field name JWT middleware might use
     const userId =
-        req.user?.id        ||   // most common (Express/jsonwebtoken default)
-        req.user?.user_id   ||   // snake_case variant
-        req.user?.userId    ||   // camelCase variant
-        req.user?.sub       ||   // JWT standard "subject" field
-        req.user?.ID        ||   // uppercase variant
+        req.user?.id        ||
+        req.user?.user_id   ||
+        req.user?.userId    ||
+        req.user?.sub       ||
+        req.user?.ID        ||
         null;
-
-    console.log('🔑 Extracted userId:', userId);
 
     let createdByName = 'Unknown';
 
@@ -114,21 +103,13 @@ router.post('/', async (req, res) => {
             );
             if (userResult.rows.length > 0) {
                 const u = userResult.rows[0];
-                // Use "First Last" if names exist, otherwise fall back to username
                 createdByName = (u.first_name && u.last_name)
                     ? `${u.first_name} ${u.last_name}`
                     : u.username;
-                console.log('✅ createdByName:', createdByName);
-            } else {
-                console.warn(`⚠️ No user found in DB for userId=${userId}`);
             }
         } catch (e) {
             console.error('User lookup failed:', e.message);
         }
-    } else {
-        // If userId is still null, the field name is something we haven't tried
-        // The debug log above will show you the exact field name to add
-        console.warn('⚠️ Could not extract userId from req.user — see debug log above');
     }
 
     try {
@@ -136,10 +117,8 @@ router.post('/', async (req, res) => {
         let finalPickupDate = null;
 
         if (is_new_patient === true || is_new_patient === 'true') {
-            // First-time patient: use the manually entered date
             finalPickupDate = next_pickup_date || null;
         } else {
-            // Returning patient: auto-calculate
             const enrollDate = enrollment_date ? new Date(enrollment_date) : new Date();
             const calc = new Date(enrollDate);
             calc.setDate(calc.getDate() + freq);
@@ -249,7 +228,7 @@ const predictRisk = (patient, history) => {
     const age = getAge(patient.date_of_birth);
     const latePickups = parseInt(history.late_pickups) || 0;
 
-    if (latePickups > 2)     { score += 40; factors.push("Chronic Defaulter (Late 3+ times)"); }
+    if (latePickups > 2)        { score += 40; factors.push("Chronic Defaulter (Late 3+ times)"); }
     else if (latePickups === 2) { score += 25; factors.push("History of late pickups (2 times)"); }
     else if (latePickups === 1) { score += 10; factors.push("First-time late pickup"); }
 

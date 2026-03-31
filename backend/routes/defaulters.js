@@ -11,6 +11,7 @@ router.use(verifyToken);
 router.get('/', async (req, res) => {
     try {
         // AUTO-DETECT: Find patients whose next_pickup_date has passed
+        // but ONLY if they have never been in the defaulters table before
         const missedPatients = await query(`
             SELECT p.patient_id, p.next_pickup_date, p.risk_level,
                    (CURRENT_DATE - p.next_pickup_date) AS days_overdue
@@ -18,7 +19,7 @@ router.get('/', async (req, res) => {
             WHERE p.next_pickup_date < CURRENT_DATE
             AND p.is_active = true
             AND p.patient_id NOT IN (
-                SELECT patient_id FROM defaulters WHERE status = 'pending'
+                SELECT patient_id FROM defaulters
             )
         `);
 
@@ -37,7 +38,7 @@ router.get('/', async (req, res) => {
             `, [patient.patient_id, daysOverdue, riskLevel]);
         }
 
-        // Update days_overdue for existing pending defaulters
+        // Update days_overdue for existing PENDING defaulters only
         await query(`
             UPDATE defaulters d
             SET days_overdue = (CURRENT_DATE - p.next_pickup_date)
@@ -47,7 +48,7 @@ router.get('/', async (req, res) => {
             AND p.next_pickup_date IS NOT NULL
         `);
 
-        // Fetch all defaulters with patient info
+        // Fetch only PENDING defaulters with patient info
         const result = await query(`
             SELECT 
                 d.defaulter_id, d.patient_id, d.days_overdue, d.status, d.detected_date,
@@ -61,9 +62,8 @@ router.get('/', async (req, res) => {
                 ) AS risk_level
             FROM defaulters d
             JOIN patients p ON d.patient_id = p.patient_id
-            ORDER BY 
-                CASE WHEN d.status = 'pending' THEN 1 ELSE 2 END,
-                d.days_overdue DESC
+            WHERE d.status = 'pending'
+            ORDER BY d.days_overdue DESC
         `);
 
         res.json({ success: true, defaulters: result.rows });

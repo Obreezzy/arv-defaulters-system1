@@ -11,10 +11,9 @@ router.use(verifyToken);
 router.get('/', async (req, res) => {
     try {
         // AUTO-DETECT: Find patients whose next_pickup_date has passed
-        // and insert them as defaulters if not already there
         const missedPatients = await query(`
             SELECT p.patient_id, p.next_pickup_date, p.risk_level,
-                   EXTRACT(DAY FROM (CURRENT_DATE - p.next_pickup_date))::integer AS days_overdue
+                   (CURRENT_DATE - p.next_pickup_date) AS days_overdue
             FROM patients p
             WHERE p.next_pickup_date < CURRENT_DATE
             AND p.is_active = true
@@ -24,25 +23,24 @@ router.get('/', async (req, res) => {
         `);
 
         for (const patient of missedPatients.rows) {
-            const daysOverdue = patient.days_overdue || 1;
+            const daysOverdue = parseInt(patient.days_overdue) || 1;
             let riskLevel = patient.risk_level || 'Low';
-            if (!patient.risk_level) {
+            if (!patient.risk_level || patient.risk_level === 'Low') {
                 if (daysOverdue > 14) riskLevel = 'High';
                 else if (daysOverdue > 7) riskLevel = 'Medium';
                 else riskLevel = 'Low';
             }
 
             await query(`
-                INSERT INTO defaulters (patient_id, days_overdue, status, detected_date)
-                VALUES ($1, $2, 'pending', CURRENT_DATE)
-                ON CONFLICT DO NOTHING
-            `, [patient.patient_id, daysOverdue]);
+                INSERT INTO defaulters (patient_id, days_overdue, risk_level, status, detected_date)
+                VALUES ($1, $2, $3, 'pending', CURRENT_DATE)
+            `, [patient.patient_id, daysOverdue, riskLevel]);
         }
 
-        // Also update days_overdue for existing pending defaulters
+        // Update days_overdue for existing pending defaulters
         await query(`
             UPDATE defaulters d
-            SET days_overdue = EXTRACT(DAY FROM (CURRENT_DATE - p.next_pickup_date))::integer
+            SET days_overdue = (CURRENT_DATE - p.next_pickup_date)
             FROM patients p
             WHERE d.patient_id = p.patient_id
             AND d.status = 'pending'
@@ -54,7 +52,7 @@ router.get('/', async (req, res) => {
             SELECT 
                 d.defaulter_id, d.patient_id, d.days_overdue, d.status, d.detected_date,
                 p.first_name, p.last_name, p.phone_number, p.patient_number,
-                COALESCE(p.risk_level, 
+                COALESCE(d.risk_level, 
                     CASE 
                         WHEN d.days_overdue > 14 THEN 'High'
                         WHEN d.days_overdue > 7 THEN 'Medium'
@@ -71,7 +69,7 @@ router.get('/', async (req, res) => {
         res.json({ success: true, defaulters: result.rows });
     } catch (err) {
         console.error("Error fetching defaulters:", err);
-        res.status(500).json({ success: false, message: 'Server error' });
+        res.status(500).json({ success: false, message: err.message });
     }
 });
 

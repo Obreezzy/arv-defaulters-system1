@@ -8,7 +8,6 @@ function Defaulters() {
   const { showToast } = useNotifications();
   const [defaulters, setDefaulters] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [scanning, setScanning] = useState(false);
   const [resolvingDefaulter, setResolvingDefaulter] = useState(null);
 
   useEffect(() => {
@@ -26,21 +25,6 @@ function Defaulters() {
       showToast({ type: 'error', message: 'Failed to load defaulters list' });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const runSystemScan = async () => {
-    try {
-      setScanning(true);
-      showToast({ type: 'info', message: '🔍 Scanning database for missed pickups...' });
-      await defaultersAPI.runDetection();
-      showToast({ type: 'success', message: 'Scan complete! List updated.' });
-      await loadDefaulters();
-    } catch (err) {
-      console.error(err);
-      showToast({ type: 'error', message: 'Failed to run detection scan' });
-    } finally {
-      setScanning(false);
     }
   };
 
@@ -65,92 +49,104 @@ function Defaulters() {
     <div className="defaulters-page">
       <div className="page-header">
         <div className="header-content">
-            <h2 className="page-title">Defaulters Tracking</h2>
-            <p className="page-subtitle">Patients who have missed their scheduled medication pickups.</p>
+          <h2 className="page-title">Defaulters Tracking</h2>
+          <p className="page-subtitle">
+            Patients who have missed their scheduled medication pickups.
+            {defaulters.length > 0 && (
+              <span style={{ marginLeft: '0.5rem', color: '#ef4444', fontWeight: '700' }}>
+                ({defaulters.filter(d => d.status === 'pending' || !d.status).length} active)
+              </span>
+            )}
+          </p>
         </div>
-        <div className="header-actions">
-            <button 
-                className={`btn-scan ${scanning ? 'scanning' : ''}`}
-                onClick={runSystemScan} 
-                disabled={scanning}
-            >
-                <span className="icon">{scanning ? '⏳' : '🔍'}</span>
-                {scanning ? 'Scanning...' : 'Run Detection Scan'}
-            </button>
-        </div>
+        <button
+          className="btn-scan"
+          onClick={loadDefaulters}
+          disabled={loading}
+        >
+          <span className="icon">{loading ? '⏳' : '🔄'}</span>
+          {loading ? 'Loading...' : 'Refresh'}
+        </button>
       </div>
 
       <div className="table-container">
         <div className="table-scroll">
-        {defaulters.length === 0 && !loading ? (
+          {loading ? (
             <div className="empty-state">
-                <div className="empty-icon">🎉</div>
-                <h3>No Defaulters Found</h3>
-                <p>All patients are currently up to date with their medication pickups.</p>
+              <div className="empty-icon">⏳</div>
+              <h3>Loading defaulters...</h3>
             </div>
-        ) : (
+          ) : defaulters.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">🎉</div>
+              <h3>No Defaulters Found</h3>
+              <p>All patients are currently up to date with their medication pickups.</p>
+            </div>
+          ) : (
             <table className="defaulters-table">
-                <thead>
-                    <tr>
-                        <th>Patient Name</th>
-                        <th>Phone</th>
-                        <th>Days Overdue</th>
-                        <th>Risk Level</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {defaulters.map(d => (
-                        <tr key={d.defaulter_id || Math.random()}>
-                            <td className="fw-bold">
-                                {d.patient_name || `${d.first_name} ${d.last_name}`}
-                                <div className="sub-text">{d.patient_number}</div>
-                            </td>
-                            <td>{d.phone_number || 'N/A'}</td>
-                            <td><span className="overdue-days">{d.days_overdue} days</span></td>
-                            <td>
-                                <span className={`risk-badge ${getRiskClass(d.risk_level)}`}>
-                                    {d.risk_level?.toUpperCase() || 'UNKNOWN'}
-                                </span>
-                            </td>
-                            <td>
-                                <span className={`status-badge ${getStatusClass(d.status)}`}>
-                                    {d.status?.replace('_', ' ').toUpperCase() || 'PENDING'}
-                                </span>
-                            </td>
-                            <td>
-                                <div className="action-buttons">
-                                    {d.status?.toLowerCase() === 'pending' || !d.status ? (
-                                        <button 
-                                            className="btn-icon resolve" 
-                                            title="Resolve Case"
-                                            onClick={() => setResolvingDefaulter(d)}
-                                        >
-                                            ✅ Resolve
-                                        </button>
-                                    ) : (
-                                        <span className="resolved-text">Resolved</span>
-                                    )}
-                                </div>
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
+              <thead>
+                <tr>
+                  <th>Patient Name</th>
+                  <th>Phone</th>
+                  <th>Days Overdue</th>
+                  <th>Risk Level</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {defaulters.map(d => (
+                  <tr key={d.defaulter_id || Math.random()}>
+                    <td className="fw-bold">
+                      {d.first_name} {d.last_name}
+                      <div className="sub-text">{d.patient_number}</div>
+                    </td>
+                    <td>{d.phone_number || 'N/A'}</td>
+                    <td>
+                      <span className="overdue-days">{d.days_overdue} days</span>
+                    </td>
+                    <td>
+                      <span className={`risk-badge ${getRiskClass(d.risk_level)}`}>
+                        {d.risk_level?.toUpperCase() || 'UNKNOWN'}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`status-badge ${getStatusClass(d.status)}`}>
+                        {d.status?.replace('_', ' ').toUpperCase() || 'PENDING'}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="action-buttons">
+                        {d.status?.toLowerCase() === 'pending' || !d.status ? (
+                          <button
+                            className="btn-icon resolve"
+                            title="Resolve Case"
+                            onClick={() => setResolvingDefaulter(d)}
+                          >
+                            ✅ Resolve
+                          </button>
+                        ) : (
+                          <span className="resolved-text">Resolved</span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
             </table>
-        )}
+          )}
+        </div>
       </div>
 
-      </div>
       {resolvingDefaulter && (
-          <ResolveModal 
-              defaulter={resolvingDefaulter} 
-              onClose={() => setResolvingDefaulter(null)} 
-              onSuccess={() => {
-                  setResolvingDefaulter(null);
-                  loadDefaulters(); 
-              }} 
-          />
+        <ResolveModal
+          defaulter={resolvingDefaulter}
+          onClose={() => setResolvingDefaulter(null)}
+          onSuccess={() => {
+            setResolvingDefaulter(null);
+            loadDefaulters();
+          }}
+        />
       )}
     </div>
   );

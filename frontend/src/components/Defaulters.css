@@ -220,3 +220,13 @@
   background-color: #059669;
   transform: translateY(-1px);
 }
+.btn-sms {
+  background-color: #8b5cf6;
+  color: white;
+  border: none;
+}
+.btn-sms:hover { background-color: #7c3aed; }
+
+.action-buttons-grid {
+  grid-template-columns: repeat(4, 1fr);
+}

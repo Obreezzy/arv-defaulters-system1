@@ -66,4 +66,11 @@ export const smsAPI = {
   sendReminder: async (smsData) => { const response = await api.post('/sms/send', smsData); return response.data; }
 };
 
+export const schedulerAPI = {
+  sendReminders: async (days = 1) => {
+    const response = await api.post('/scheduler/trigger/send-reminders', { days });
+    return response.data;
+  }
+};
+
 export default api;

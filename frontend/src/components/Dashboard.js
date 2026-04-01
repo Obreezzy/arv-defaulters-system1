@@ -4,6 +4,7 @@ import PickupForm from './PickupForm';
 import PatientForm from './PatientForm';
 import './Dashboard.css';
 import { defaultersAPI, patientsAPI } from '../services/api';
+import { schedulerAPI } from '../services/api';
 import { useNotifications } from '../contexts/NotificationContext';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title } from 'chart.js';
 import { Doughnut } from 'react-chartjs-2';
@@ -23,6 +24,7 @@ function Dashboard({ onNavigate }) {
   });
 
   const [loading, setLoading] = useState(true);
+  const [sendingSMS, setSendingSMS] = useState(false);
   const [showPickupForm, setShowPickupForm] = useState(false);
   const [showPatientForm, setShowPatientForm] = useState(false);
 
@@ -63,6 +65,20 @@ function Dashboard({ onNavigate }) {
     }
   };
 
+  const handleSendReminders = async () => {
+    setSendingSMS(true);
+    showToast({ type: 'info', message: '📱 Sending reminder SMS...' });
+    try {
+      await schedulerAPI.sendReminders(1);
+      showToast({ type: 'success', message: '✅ Reminder SMS sent successfully!' });
+    } catch (err) {
+      console.error(err);
+      showToast({ type: 'error', message: 'Failed to send SMS reminders' });
+    } finally {
+      setSendingSMS(false);
+    }
+  };
+
   const riskChartData = {
     labels: ['High Risk', 'Medium Risk', 'Low Risk'],
     datasets: [{
@@ -99,6 +115,14 @@ function Dashboard({ onNavigate }) {
         </button>
         <button className="dashboard-btn btn-report" onClick={() => { if(onNavigate) onNavigate('reports'); }}>
           <span className="btn-icon">📄</span> Generate Report
+        </button>
+        <button 
+          className="dashboard-btn btn-sms" 
+          onClick={handleSendReminders}
+          disabled={sendingSMS}
+        >
+          <span className="btn-icon">{sendingSMS ? '⏳' : '📱'}</span>
+          {sendingSMS ? 'Sending...' : 'Send Reminders'}
         </button>
       </div>
 

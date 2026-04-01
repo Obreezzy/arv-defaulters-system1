@@ -23,8 +23,6 @@ function Dashboard({ onNavigate }) {
   });
 
   const [loading, setLoading] = useState(true);
-  
-  // Modal States
   const [showPickupForm, setShowPickupForm] = useState(false);
   const [showPatientForm, setShowPatientForm] = useState(false);
 
@@ -68,7 +66,7 @@ function Dashboard({ onNavigate }) {
   const riskChartData = {
     labels: ['High Risk', 'Medium Risk', 'Low Risk'],
     datasets: [{
-      data: [stats.highRisk, stats.mediumRisk, stats.totalPatients - (stats.highRisk + stats.mediumRisk)],
+      data: [stats.highRisk, stats.mediumRisk, Math.max(0, stats.totalPatients - (stats.highRisk + stats.mediumRisk))],
       backgroundColor: ['#ef4444', '#f59e0b', '#10b981'],
       borderWidth: 0,
     }]
@@ -77,7 +75,7 @@ function Dashboard({ onNavigate }) {
   const adherenceChartData = {
     labels: ['Adherent', 'Defaulting'],
     datasets: [{
-      data: [stats.activePatients - stats.activeDefaulters, stats.activeDefaulters],
+      data: [Math.max(0, stats.activePatients - stats.activeDefaulters), stats.activeDefaulters],
       backgroundColor: ['#10b981', '#ef4444'],
       borderWidth: 0,
     }]
@@ -85,15 +83,6 @@ function Dashboard({ onNavigate }) {
 
   return (
     <div className="dashboard">
-      <div className="dashboard-header">
-        <div>
-           <h2 className="dashboard-title">👋 AI Command Center</h2>
-           <p style={{ color: '#6b7280', marginTop: '5px' }}>Real-time adherence monitoring & risk prediction.</p>
-        </div>
-        <button className="dashboard-btn btn-refresh" onClick={fetchDashboardData}>
-            🔄 Refresh
-        </button>
-      </div>
 
       <div className="stats-grid">
         <StatCard title="Total Patients" value={stats.totalPatients} icon="👥" color="#3b82f6" />
@@ -116,52 +105,50 @@ function Dashboard({ onNavigate }) {
       <div className="ai-section">
         <h3 className="section-title">🔮 AI Risk Predictions</h3>
         <div className="ai-cards-container">
-            <div className="ai-alert-card high-risk">
-                <div className="alert-header">
-                    <span className="alert-icon">🔴</span>
-                    <h4>High Risk Candidates</h4>
-                </div>
-                <div className="alert-body">
-                    <span className="big-number red">{stats.highRisk}</span>
-                    <p>Patients vulnerable due to distance, age, or history.</p>
-                </div>
-                {/* High Risk Button */}
-                <button 
-                    className="btn-action red" 
-                    onClick={() => onNavigate ? onNavigate('patients', 'High') : null}
-                >
-                    Review Patients
-                </button>
+          <div className="ai-alert-card high-risk">
+            <div className="alert-header">
+              <span className="alert-icon">🔴</span>
+              <h4>High Risk Candidates</h4>
             </div>
+            <div className="alert-body">
+              <span className="big-number red">{stats.highRisk}</span>
+              <p>Patients vulnerable due to distance, age, or history.</p>
+            </div>
+            <button 
+              className="btn-action red" 
+              onClick={() => onNavigate ? onNavigate('patients', 'High') : null}
+            >
+              Review Patients
+            </button>
+          </div>
 
-            <div className="ai-alert-card medium-risk">
-                <div className="alert-header">
-                    <span className="alert-icon">🟠</span>
-                    <h4>Medium Risk Candidates</h4>
-                </div>
-                <div className="alert-body">
-                    <span className="big-number orange">{stats.mediumRisk}</span>
-                    <p>Patients requiring monitoring to prevent default.</p>
-                </div>
-                {/* 👇 Medium Risk Button with proper CSS class attached */}
-                <button 
-                    className="btn-action orange" 
-                    onClick={() => onNavigate ? onNavigate('patients', 'Medium') : null}
-                >
-                    Review Patients
-                </button>
+          <div className="ai-alert-card medium-risk">
+            <div className="alert-header">
+              <span className="alert-icon">🟠</span>
+              <h4>Medium Risk Candidates</h4>
             </div>
+            <div className="alert-body">
+              <span className="big-number orange">{stats.mediumRisk}</span>
+              <p>Patients requiring monitoring to prevent default.</p>
+            </div>
+            <button 
+              className="btn-action orange" 
+              onClick={() => onNavigate ? onNavigate('patients', 'Medium') : null}
+            >
+              Review Patients
+            </button>
+          </div>
 
-             <div className="ai-alert-card system-ok">
-                <div className="alert-header">
-                    <span className="alert-icon">🤖</span>
-                    <h4>AI Engine Status</h4>
-                </div>
-                <div className="alert-body">
-                    <span className="status-indicator online">ONLINE</span>
-                    <p>Predictive models active.</p>
-                </div>
+          <div className="ai-alert-card system-ok">
+            <div className="alert-header">
+              <span className="alert-icon">🤖</span>
+              <h4>AI Engine Status</h4>
             </div>
+            <div className="alert-body">
+              <span className="status-indicator online">ONLINE</span>
+              <p>Predictive models active.</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -182,15 +169,15 @@ function Dashboard({ onNavigate }) {
 
       {showPatientForm && (
         <PatientForm 
-            onClose={() => setShowPatientForm(false)} 
-            onSuccess={() => { fetchDashboardData(); setShowPatientForm(false); }} 
+          onClose={() => setShowPatientForm(false)} 
+          onSuccess={() => { fetchDashboardData(); setShowPatientForm(false); }} 
         />
       )}
       {showPickupForm && (
         <PickupForm 
-            isOpen={true} 
-            onClose={() => setShowPickupForm(false)} 
-            onSuccess={() => { fetchDashboardData(); setShowPickupForm(false); showToast({ type: 'success', message: 'Pickup recorded!' }); }} 
+          isOpen={true} 
+          onClose={() => setShowPickupForm(false)} 
+          onSuccess={() => { fetchDashboardData(); setShowPickupForm(false); showToast({ type: 'success', message: 'Pickup recorded!' }); }} 
         />
       )}
     </div>

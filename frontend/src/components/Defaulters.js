@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import './Defaulters.css';
 import { defaultersAPI } from '../services/api';
 import { useNotifications } from '../contexts/NotificationContext';
-import ResolveModal from './ResolveModal';
+import PickupForm from './PickupForm';
 
 function Defaulters() {
   const { showToast } = useNotifications();
   const [defaulters, setDefaulters] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [resolvingDefaulter, setResolvingDefaulter] = useState(null);
+  const [pickupPatient, setPickupPatient] = useState(null);
 
   useEffect(() => {
     loadDefaulters();
@@ -37,14 +37,6 @@ function Defaulters() {
     }
   };
 
-  const getStatusClass = (status) => {
-    switch(status?.toLowerCase()) {
-      case 'returned': return 'status-returned';
-      case 'lost_to_followup': return 'status-lost';
-      default: return 'status-pending';
-    }
-  };
-
   return (
     <div className="defaulters-page">
       <div className="page-header">
@@ -54,7 +46,7 @@ function Defaulters() {
             Patients who have missed their scheduled medication pickups.
             {defaulters.length > 0 && (
               <span style={{ marginLeft: '0.5rem', color: '#ef4444', fontWeight: '700' }}>
-                ({defaulters.filter(d => d.status === 'pending' || !d.status).length} active)
+                ({defaulters.length} active)
               </span>
             )}
           </p>
@@ -90,7 +82,6 @@ function Defaulters() {
                   <th>Phone</th>
                   <th>Days Overdue</th>
                   <th>Risk Level</th>
-                  <th>Status</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -111,24 +102,19 @@ function Defaulters() {
                       </span>
                     </td>
                     <td>
-                      <span className={`status-badge ${getStatusClass(d.status)}`}>
-                        {d.status?.replace('_', ' ').toUpperCase() || 'PENDING'}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="action-buttons">
-                        {d.status?.toLowerCase() === 'pending' || !d.status ? (
-                          <button
-                            className="btn-icon resolve"
-                            title="Resolve Case"
-                            onClick={() => setResolvingDefaulter(d)}
-                          >
-                            ✅ Resolve
-                          </button>
-                        ) : (
-                          <span className="resolved-text">Resolved</span>
-                        )}
-                      </div>
+                      <button
+                        className="btn-record-pickup"
+                        onClick={() => setPickupPatient({
+                          patient_id: d.patient_id,
+                          first_name: d.first_name,
+                          last_name: d.last_name,
+                          patient_number: d.patient_number,
+                          phone_number: d.phone_number,
+                          pickup_frequency: d.pickup_frequency || 30
+                        })}
+                      >
+                        💊 Record Pickup
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -138,12 +124,14 @@ function Defaulters() {
         </div>
       </div>
 
-      {resolvingDefaulter && (
-        <ResolveModal
-          defaulter={resolvingDefaulter}
-          onClose={() => setResolvingDefaulter(null)}
+      {pickupPatient && (
+        <PickupForm
+          isOpen={true}
+          preselectedPatient={pickupPatient}
+          onClose={() => setPickupPatient(null)}
           onSuccess={() => {
-            setResolvingDefaulter(null);
+            setPickupPatient(null);
+            showToast({ type: 'success', message: 'Pickup recorded! Patient returned to active list.' });
             loadDefaulters();
           }}
         />

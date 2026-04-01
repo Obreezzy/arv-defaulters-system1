@@ -202,3 +202,21 @@
   .defaulters-table th { padding: 1rem 1.5rem; }
   .defaulters-table td { padding: 1rem 1.5rem; font-size: 0.95rem; }
 }
+
+/* Record Pickup Button */
+.btn-record-pickup {
+  background-color: #10b981;
+  color: white;
+  border: none;
+  padding: 0.4rem 0.85rem;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-record-pickup:hover {
+  background-color: #059669;
+  transform: translateY(-1px);
+}

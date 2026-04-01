@@ -109,6 +109,16 @@ router.post('/record', async (req, res) => {
     const pickup_record = result.rows[0];
     console.log('✅ Pickup recorded! ID:', pickup_record.pickup_id);
 
+    // Update next_pickup_date on patients table
+    try {
+      await db.query(
+        'UPDATE patients SET next_pickup_date = $1 WHERE patient_id = $2',
+        [computed_next_pickup, patient_id]
+      );
+    } catch (e) {
+      console.log('Could not update patient next_pickup_date:', e.message);
+    }
+
     // Remove from defaulters if applicable
     try {
       await db.query(

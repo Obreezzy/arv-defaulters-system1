@@ -73,17 +73,17 @@ const SMS_SERVICE = {
   },
 
   async sendReminderSMS(patient, daysMissed) {
-    const message = `Hello ${patient.name}, this is a reminder from your healthcare center. You have missed your ARV medication pickup by ${daysMissed} days. Please visit the clinic as soon as possible. Your health is important to us.`;
+    const message = `Hello ${patient.name}, this is a reminder from your healthcare center. You have missed your medication pickup by ${daysMissed} days. Please visit the clinic as soon as possible. Your health is important to us.`;
     return await this.sendSMS(patient.phone, message);
   },
 
   async sendFollowUpSMS(patient) {
-    const message = `Hello ${patient.name}, thank you for responding to our call. Please remember to collect your ARV medication at your earliest convenience. Stay healthy!`;
+    const message = `Hello ${patient.name}, thank you for responding to our call. Please remember to collect your medication at your earliest convenience. Stay healthy!`;
     return await this.sendSMS(patient.phone, message);
   },
 
   async sendUrgentSMS(patient, daysMissed) {
-    const message = `URGENT: ${patient.name}, you have missed your ARV medication for ${daysMissed} days. This is critical for your health. Please contact the clinic immediately or visit us today. Your health team is concerned.`;
+    const message = `URGENT: ${patient.name}, you have missed your medication for ${daysMissed} days. This is critical for your health. Please contact the clinic immediately or visit us today. Your health team is concerned.`;
     return await this.sendSMS(patient.phone, message);
   },
 

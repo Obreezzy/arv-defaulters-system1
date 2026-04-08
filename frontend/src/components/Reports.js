@@ -2,149 +2,284 @@ import React, { useState, useEffect } from 'react';
 import './Reports.css';
 import { defaultersAPI, patientsAPI } from '../services/api';
 import { useNotifications } from '../contexts/NotificationContext';
-
-// 👇 CORRECT IMPORTS FOR CHARTS
-import LineChart from './charts/LineChart'; 
-
-// 👇 CORRECT IMPORTS FOR PDF (The Fix)
+import LineChart from './charts/LineChart';
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable'; // Import the function directly
+import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { saveAs } from 'file-saver';
 
 function Reports() {
   const { showToast } = useNotifications();
-  
+
   const [stats, setStats] = useState({
-    totalPatients: 0,
-    totalDefaulters: 0,
-    highRisk: 0,
-    adherenceRate: 0
+    totalPatients: 0, totalDefaulters: 0, highRisk: 0, adherenceRate: 0
   });
 
-  const [patientsData, setPatientsData] = useState([]);
+  const [patientsData, setPatientsData]   = useState([]);
   const [defaultersData, setDefaultersData] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchReportData();
-  }, []);
+  // Report filters
+  const [selectedPatient, setSelectedPatient] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo]     = useState('');
+  const [reportType, setReportType] = useState('summary');
+
+  useEffect(() => { fetchReportData(); }, []);
 
   const fetchReportData = async () => {
     try {
       setLoading(true);
-      const [patientsRes, defaultersRes] = await Promise.all([
+      const [pRes, dRes] = await Promise.all([
         patientsAPI.getAllPatients(),
         defaultersAPI.getAllDefaulters()
       ]);
-
-      const patients = patientsRes.patients || patientsRes.data || [];
-      const defaulters = defaultersRes.defaulters || defaultersRes.data || [];
-
+      const patients  = pRes.patients  || pRes.data  || [];
+      const defaulters = dRes.defaulters || dRes.data || [];
       setPatientsData(patients);
       setDefaultersData(defaulters);
 
-      const activePatients = patients.filter(p => p.is_active !== false).length;
-      const highRiskCount = defaulters.filter(d => (d.risk_level === 'high' || d.days_missed > 7)).length;
-
+      const active = patients.filter(p => p.is_active !== false).length;
       setStats({
         totalPatients: patients.length,
         totalDefaulters: defaulters.length,
-        highRisk: highRiskCount,
-        adherenceRate: patients.length > 0 
-          ? Math.round(((activePatients - defaulters.length) / activePatients) * 100) 
-          : 0
+        highRisk: patients.filter(p => p.risk_level === 'High').length,
+        adherenceRate: patients.length > 0
+          ? Math.round(((active - defaulters.length) / active) * 100) : 0
       });
-
       setLoading(false);
     } catch (err) {
-      console.error('Error fetching report data:', err);
       showToast({ type: 'error', message: 'Failed to load report data' });
       setLoading(false);
     }
   };
 
-  // 📄 PDF GENERATOR (FIXED VERSION)
-  const generatePDF = () => {
-    try {
-      const doc = new jsPDF();
-
-      // 1. Header Banner
-      doc.setFillColor(59, 130, 246);
-      doc.rect(0, 0, 210, 40, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(22);
-      doc.text('ARV Defaulter Tracking System', 105, 20, { align: 'center' });
-      doc.setFontSize(12);
-      doc.text(`Official System Report - ${new Date().toLocaleDateString()}`, 105, 30, { align: 'center' });
-
-      // 2. Executive Summary Table
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(14);
-      doc.text('1. Executive Summary', 14, 55);
-      
-      const summaryData = [
-        ['Metric', 'Current Value', 'Metric', 'Current Value'],
-        ['Total Patients', stats.totalPatients, 'Adherence Rate', `${stats.adherenceRate}%`],
-        ['Active Defaulters', stats.totalDefaulters, 'High Risk Cases', stats.highRisk],
-      ];
-
-      // 👇 THE FIX: autoTable(doc, options) instead of doc.autoTable(options)
-      autoTable(doc, {
-        startY: 60,
-        body: summaryData,
-        theme: 'grid',
-        styles: { fontSize: 10, cellPadding: 4 },
-        columnStyles: { 
-          0: { fontStyle: 'bold', fillColor: [240, 240, 240] },
-          2: { fontStyle: 'bold', fillColor: [240, 240, 240] } 
-        }
-      });
-
-      // 3. Defaulter Details Table
-      // Get the Y position where the previous table ended
-      const finalY = (doc.lastAutoTable && doc.lastAutoTable.finalY) || 80;
-      
-      doc.setFontSize(14);
-      doc.text('2. High-Priority Defaulters List', 14, finalY + 15);
-
-      const tableData = defaultersData.map(d => [
-        d.patient_name || 'Unknown',
-        d.patient_number || 'N/A',
-        `${d.days_missed || 0} days`,
-        d.risk_level?.toUpperCase() || 'MEDIUM',
-        d.phone_number || 'N/A'
-      ]);
-
-      // 👇 THE FIX: Using autoTable(doc, ...) again
-      autoTable(doc, {
-        startY: finalY + 20,
-        head: [['Patient Name', 'ID', 'Days Missed', 'Risk', 'Contact']],
-        body: tableData.length > 0 ? tableData : [['No active defaulters', '', '', '', '']],
-        headStyles: { fillColor: [59, 130, 246] },
-        alternateRowStyles: { fillColor: [249, 250, 251] }
-      });
-
-      doc.save('ARV_System_Report.pdf');
-      showToast({ type: 'success', message: 'PDF generated successfully' });
-
-    } catch (error) {
-      console.error("PDF Generation Error:", error);
-      showToast({ type: 'error', message: 'Error generating PDF. Check console.' });
-    }
+  // ── Helpers ──────────────────────────────────────────────
+  const fmtDate = (d) => {
+    if (!d) return 'N/A';
+    const dt = new Date(d);
+    return `${String(dt.getDate()).padStart(2,'0')}-${String(dt.getMonth()+1).padStart(2,'0')}-${dt.getFullYear()}`;
   };
 
-  // 📊 EXCEL GENERATOR
+  const pdfHeader = (doc, title) => {
+    doc.setFillColor(30, 64, 175);
+    doc.rect(0, 0, 210, 38, 'F');
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(18); doc.setFont('helvetica','bold');
+    doc.text('ARV Defaulters Management System', 105, 16, { align: 'center' });
+    doc.setFontSize(11); doc.setFont('helvetica','normal');
+    doc.text(title, 105, 26, { align: 'center' });
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 105, 33, { align: 'center' });
+    doc.setTextColor(0,0,0);
+  };
+
+  // ── 1. Summary Report ─────────────────────────────────────
+  const generateSummaryPDF = () => {
+    const doc = new jsPDF();
+    pdfHeader(doc, 'Executive Summary Report');
+
+    doc.setFontSize(13); doc.setFont('helvetica','bold');
+    doc.text('1. System Overview', 14, 50);
+
+    autoTable(doc, {
+      startY: 55,
+      body: [
+        ['Total Registered Patients', stats.totalPatients],
+        ['Active Defaulters',         stats.totalDefaulters],
+        ['High Risk Patients',         stats.highRisk],
+        ['Adherence Rate',            `${stats.adherenceRate}%`],
+        ['Report Period',             dateFrom && dateTo ? `${fmtDate(dateFrom)} – ${fmtDate(dateTo)}` : 'All Time'],
+      ],
+      theme: 'striped',
+      headStyles: { fillColor: [30,64,175] },
+      styles: { fontSize: 10 },
+      columnStyles: { 0: { fontStyle:'bold', cellWidth: 90 } }
+    });
+
+    const y1 = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(13); doc.setFont('helvetica','bold');
+    doc.text('2. Active Defaulters', 14, y1);
+
+    autoTable(doc, {
+      startY: y1 + 5,
+      head: [['Patient', 'ID', 'Days Overdue', 'Risk Level', 'Phone']],
+      body: defaultersData.length > 0
+        ? defaultersData.map(d => [
+            `${d.first_name} ${d.last_name}`,
+            d.patient_number || 'N/A',
+            `${d.days_overdue || 0} days`,
+            d.risk_level?.toUpperCase() || 'N/A',
+            d.phone_number || 'N/A'
+          ])
+        : [['No active defaulters','','','','']],
+      headStyles: { fillColor: [239,68,68] },
+      alternateRowStyles: { fillColor: [254,242,242] },
+      styles: { fontSize: 9 }
+    });
+
+    doc.save('ARV_Summary_Report.pdf');
+    showToast({ type: 'success', message: 'Summary PDF generated!' });
+  };
+
+  // ── 2. Patient-Specific Report ────────────────────────────
+  const generatePatientPDF = () => {
+    const patient = patientsData.find(p => p.patient_id === parseInt(selectedPatient));
+    if (!patient) { showToast({ type: 'error', message: 'Please select a patient first' }); return; }
+
+    const doc = new jsPDF();
+    pdfHeader(doc, `Patient Report: ${patient.first_name} ${patient.last_name}`);
+
+    doc.setFontSize(13); doc.setFont('helvetica','bold');
+    doc.text('Patient Profile', 14, 50);
+
+    autoTable(doc, {
+      startY: 55,
+      body: [
+        ['Patient Number',    patient.patient_number],
+        ['Full Name',         `${patient.first_name} ${patient.last_name}`],
+        ['Date of Birth',     fmtDate(patient.date_of_birth)],
+        ['Gender',            patient.gender || 'N/A'],
+        ['Phone',             patient.phone_number || 'N/A'],
+        ['Address',           patient.address || 'N/A'],
+        ['City',              patient.city || 'N/A'],
+        ['Distance from Clinic', patient.distance_from_clinic ? `${patient.distance_from_clinic} km` : 'N/A'],
+        ['ARV Regimen',       patient.arv_regimen || 'N/A'],
+        ['Pickup Frequency',  patient.pickup_frequency ? `Every ${patient.pickup_frequency} days` : 'N/A'],
+        ['Next Pickup Date',  fmtDate(patient.next_pickup_date)],
+        ['Risk Level',        patient.risk_level || 'N/A'],
+        ['Risk Score',        patient.risk_score ? `${patient.risk_score}%` : 'N/A'],
+        ['Enrollment Date',   fmtDate(patient.enrollment_date)],
+        ['Status',            patient.is_active ? 'Active' : 'Inactive'],
+      ],
+      theme: 'striped',
+      headStyles: { fillColor: [30,64,175] },
+      styles: { fontSize: 10 },
+      columnStyles: { 0: { fontStyle:'bold', cellWidth: 70 } }
+    });
+
+    // Check if this patient is a defaulter
+    const isDefaulter = defaultersData.find(d => d.patient_id === patient.patient_id);
+    if (isDefaulter) {
+      const y2 = doc.lastAutoTable.finalY + 10;
+      doc.setFontSize(12); doc.setFont('helvetica','bold');
+      doc.setTextColor(239,68,68);
+      doc.text(`⚠ Patient is currently a defaulter (${isDefaulter.days_overdue} days overdue)`, 14, y2);
+      doc.setTextColor(0,0,0);
+    }
+
+    doc.save(`Patient_Report_${patient.patient_number}.pdf`);
+    showToast({ type: 'success', message: `Report for ${patient.first_name} generated!` });
+  };
+
+  // ── 3. High Risk Report ───────────────────────────────────
+  const generateHighRiskPDF = () => {
+    const doc = new jsPDF();
+    pdfHeader(doc, 'High Risk Patients Report');
+
+    const highRisk = patientsData.filter(p => p.risk_level === 'High' || p.risk_level === 'Medium');
+
+    doc.setFontSize(13); doc.setFont('helvetica','bold');
+    doc.text(`At-Risk Patients (${highRisk.length} total)`, 14, 50);
+
+    autoTable(doc, {
+      startY: 55,
+      head: [['Patient', 'ID', 'Risk', 'Score', 'Distance', 'Next Pickup', 'Phone']],
+      body: highRisk.length > 0
+        ? highRisk.map(p => [
+            `${p.first_name} ${p.last_name}`,
+            p.patient_number,
+            p.risk_level?.toUpperCase() || 'N/A',
+            p.risk_score ? `${p.risk_score}%` : '0%',
+            p.distance_from_clinic ? `${p.distance_from_clinic}km` : 'N/A',
+            fmtDate(p.next_pickup_date),
+            p.phone_number || 'N/A'
+          ])
+        : [['No high/medium risk patients found','','','','','','']],
+      headStyles: { fillColor: [245,158,11] },
+      alternateRowStyles: { fillColor: [255,251,235] },
+      styles: { fontSize: 9 }
+    });
+
+    doc.save('High_Risk_Patients_Report.pdf');
+    showToast({ type: 'success', message: 'High Risk report generated!' });
+  };
+
+  // ── 4. Defaulters Report ──────────────────────────────────
+  const generateDefaultersPDF = () => {
+    const doc = new jsPDF();
+    pdfHeader(doc, 'Defaulters Tracking Report');
+
+    doc.setFontSize(13); doc.setFont('helvetica','bold');
+    doc.text(`Active Defaulters: ${defaultersData.length}`, 14, 50);
+
+    autoTable(doc, {
+      startY: 55,
+      head: [['Patient Name', 'ID', 'Days Overdue', 'Risk', 'Phone', 'Detected']],
+      body: defaultersData.length > 0
+        ? defaultersData.map(d => [
+            `${d.first_name} ${d.last_name}`,
+            d.patient_number || 'N/A',
+            `${d.days_overdue || 0} days`,
+            d.risk_level?.toUpperCase() || 'N/A',
+            d.phone_number || 'N/A',
+            fmtDate(d.detected_date)
+          ])
+        : [['No active defaulters','','','','','']],
+      headStyles: { fillColor: [239,68,68] },
+      alternateRowStyles: { fillColor: [254,242,242] },
+      styles: { fontSize: 9 }
+    });
+
+    doc.save('Defaulters_Report.pdf');
+    showToast({ type: 'success', message: 'Defaulters report generated!' });
+  };
+
+  // ── 5. Excel Export ───────────────────────────────────────
   const generateExcel = () => {
     const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(patientsData);
-    XLSX.utils.book_append_sheet(wb, ws, "Patients");
-    
-    const ws2 = XLSX.utils.json_to_sheet(defaultersData);
-    XLSX.utils.book_append_sheet(wb, ws2, "Defaulters");
 
-    XLSX.writeFile(wb, "ARV_System_Data.xlsx");
-    showToast({ type: 'success', message: 'Excel file exported' });
+    // Patients sheet
+    const pSheet = XLSX.utils.json_to_sheet(patientsData.map(p => ({
+      'Patient Number': p.patient_number,
+      'First Name':     p.first_name,
+      'Last Name':      p.last_name,
+      'Gender':         p.gender,
+      'Date of Birth':  fmtDate(p.date_of_birth),
+      'Phone':          p.phone_number,
+      'City':           p.city,
+      'Distance (km)':  p.distance_from_clinic,
+      'ARV Regimen':    p.arv_regimen,
+      'Risk Level':     p.risk_level,
+      'Risk Score':     p.risk_score,
+      'Next Pickup':    fmtDate(p.next_pickup_date),
+      'Status':         p.is_active ? 'Active' : 'Inactive',
+      'Enrollment':     fmtDate(p.enrollment_date),
+    })));
+    XLSX.utils.book_append_sheet(wb, pSheet, 'Patients');
+
+    // Defaulters sheet
+    const dSheet = XLSX.utils.json_to_sheet(defaultersData.map(d => ({
+      'Patient Name':  `${d.first_name} ${d.last_name}`,
+      'Patient ID':    d.patient_number,
+      'Days Overdue':  d.days_overdue,
+      'Risk Level':    d.risk_level,
+      'Phone':         d.phone_number,
+      'Status':        d.status,
+      'Detected Date': fmtDate(d.detected_date),
+    })));
+    XLSX.utils.book_append_sheet(wb, dSheet, 'Defaulters');
+
+    // Summary sheet
+    const sSheet = XLSX.utils.json_to_sheet([
+      { Metric: 'Total Patients',    Value: stats.totalPatients },
+      { Metric: 'Active Defaulters', Value: stats.totalDefaulters },
+      { Metric: 'High Risk',         Value: stats.highRisk },
+      { Metric: 'Adherence Rate',    Value: `${stats.adherenceRate}%` },
+      { Metric: 'Report Date',       Value: new Date().toLocaleDateString() },
+    ]);
+    XLSX.utils.book_append_sheet(wb, sSheet, 'Summary');
+
+    XLSX.writeFile(wb, 'ARV_System_Data.xlsx');
+    showToast({ type: 'success', message: 'Excel exported successfully!' });
   };
 
   const adherenceTrendData = {
@@ -154,44 +289,97 @@ function Reports() {
       data: [85, 87, 84, 89, 91, stats.adherenceRate],
       borderColor: '#10b981',
       backgroundColor: 'rgba(16, 185, 129, 0.1)',
-      fill: true,
-      tension: 0.4
+      fill: true, tension: 0.4
     }]
   };
 
-  if (loading) return <div className="loading-state"><div className="spinner"></div><p>Preparing reports...</p></div>;
+  if (loading) return (
+    <div className="loading-state">
+      <div className="spinner"></div>
+      <p>Preparing reports...</p>
+    </div>
+  );
 
   return (
     <div className="reports-page">
       <div className="reports-header">
-        <h2 className="reports-title">System Reports & Exports</h2>
+        <h2 className="reports-title">📊 System Reports & Exports</h2>
         <div className="reports-date">As of {new Date().toLocaleDateString()}</div>
       </div>
 
-      <div className="export-cards-container">
-        <div className="export-card" onClick={generatePDF}>
-          <div className="export-icon pdf">📄</div>
-          <div className="export-text">
-            <h3>Download PDF Report</h3>
-            <p>Official summary with tables and branding.</p>
-          </div>
-        </div>
+      {/* ── Report Type Selector ── */}
+      <div className="report-type-bar">
+        {[
+          { key: 'summary',   label: '📋 Summary',        desc: 'Full system overview' },
+          { key: 'patient',   label: '👤 Patient Report',  desc: 'Single patient detail' },
+          { key: 'highrisk',  label: '🔴 High Risk',       desc: 'At-risk patients' },
+          { key: 'defaulters',label: '⚠️ Defaulters',      desc: 'Missed pickups' },
+          { key: 'excel',     label: '📊 Excel Export',    desc: 'Full data export' },
+        ].map(r => (
+          <button
+            key={r.key}
+            className={`report-type-btn ${reportType === r.key ? 'active' : ''}`}
+            onClick={() => setReportType(r.key)}
+          >
+            <span className="rt-label">{r.label}</span>
+            <span className="rt-desc">{r.desc}</span>
+          </button>
+        ))}
+      </div>
 
-        <div className="export-card" onClick={generateExcel}>
-          <div className="export-icon excel">📊</div>
-          <div className="export-text">
-            <h3>Export to Excel</h3>
-            <p>Full raw data for advanced analysis.</p>
+      {/* ── Filters ── */}
+      <div className="report-filters">
+        {reportType === 'patient' && (
+          <div className="filter-group">
+            <label>Select Patient</label>
+            <select value={selectedPatient} onChange={e => setSelectedPatient(e.target.value)}>
+              <option value="">-- Choose a patient --</option>
+              {patientsData.map(p => (
+                <option key={p.patient_id} value={p.patient_id}>
+                  {p.first_name} {p.last_name} ({p.patient_number})
+                </option>
+              ))}
+            </select>
           </div>
+        )}
+        <div className="filter-group">
+          <label>From Date</label>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+        </div>
+        <div className="filter-group">
+          <label>To Date</label>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
         </div>
       </div>
 
-      <div className="reports-visuals">
-        <div className="report-chart-box">
-          <h3>Adherence Performance Trend</h3>
-          <div className="chart-inner">
-            <LineChart data={adherenceTrendData} />
-          </div>
+      {/* ── Generate Button ── */}
+      <div className="generate-section">
+        <button
+          className="btn-generate"
+          onClick={() => {
+            if (reportType === 'summary')    generateSummaryPDF();
+            else if (reportType === 'patient')    generatePatientPDF();
+            else if (reportType === 'highrisk')   generateHighRiskPDF();
+            else if (reportType === 'defaulters') generateDefaultersPDF();
+            else if (reportType === 'excel')      generateExcel();
+          }}
+        >
+          {reportType === 'excel' ? '📊 Export Excel' : '📄 Generate PDF Report'}
+        </button>
+
+        <div className="report-stats-row">
+          <div className="mini-stat"><span>{stats.totalPatients}</span><small>Total Patients</small></div>
+          <div className="mini-stat red"><span>{stats.totalDefaulters}</span><small>Defaulters</small></div>
+          <div className="mini-stat orange"><span>{stats.highRisk}</span><small>High Risk</small></div>
+          <div className="mini-stat green"><span>{stats.adherenceRate}%</span><small>Adherence</small></div>
+        </div>
+      </div>
+
+      {/* ── Chart ── */}
+      <div className="report-chart-box">
+        <h3>Adherence Performance Trend</h3>
+        <div className="chart-inner">
+          <LineChart data={adherenceTrendData} />
         </div>
       </div>
     </div>

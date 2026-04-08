@@ -21,20 +21,31 @@ function PatientForm({ onClose, onSuccess }) {
     distance_from_clinic: '',
     arv_regimen: '',
     pickup_frequency: '30',
-    next_pickup_date: '',       // used when isNewPatient = true
-    emergency_contact_name: '',
-    emergency_contact_phone: ''
+    next_pickup_date: '',
+    // Next of Kin (mandatory)
+    next_of_kin_name: '',
+    next_of_kin_relationship: '',
+    next_of_kin_phone: '',
+    next_of_kin_address: '',
+    // Medical / Risk Factors
+    has_hypertension: false,
+    has_diabetes: false,
+    has_tuberculosis: false,
+    has_mental_health: false,
+    has_kidney_disease: false,
+    other_chronic_condition: '',
+    who_stage: '',
+    cd4_count: '',
+    viral_load: '',
+    // Additional risk notes
+    risk_notes: '',
   });
 
-  // true  = first-time patient → staff enters pickup date manually
-  // false = returning/transfer → pickup date auto-calculated
   const [isNewPatient, setIsNewPatient] = useState(true);
-
   const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState(null);
+  const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
 
-  // Generate patient number + default enrollment date on mount
   useState(() => {
     const patientNumber = 'P' + Date.now().toString().slice(-8);
     setFormData(prev => ({
@@ -45,11 +56,10 @@ function PatientForm({ onClose, onSuccess }) {
   }, []);
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
-  // Preview auto-calculated date (for returning patients only)
   const getAutoPickupPreview = () => {
     if (!formData.enrollment_date || !formData.pickup_frequency) return null;
     const enroll = new Date(formData.enrollment_date);
@@ -77,7 +87,11 @@ function PatientForm({ onClose, onSuccess }) {
       setError('Date of birth must be in the past'); return false;
     }
 
-    // First-time patient MUST have a manually entered pickup date
+    // Next of Kin validation (mandatory)
+    if (!formData.next_of_kin_name)         { setError('Next of Kin name is required'); return false; }
+    if (!formData.next_of_kin_relationship) { setError('Next of Kin relationship is required'); return false; }
+    if (!formData.next_of_kin_phone)        { setError('Next of Kin phone number is required'); return false; }
+
     if (isNewPatient && !formData.next_pickup_date) {
       setError('Please enter the first pickup date for this new patient'); return false;
     }
@@ -97,29 +111,45 @@ function PatientForm({ onClose, onSuccess }) {
     setError(null);
 
     try {
+      // Build chronic conditions string for risk notes
+      const conditions = [];
+      if (formData.has_hypertension)   conditions.push('Hypertension');
+      if (formData.has_diabetes)       conditions.push('Diabetes');
+      if (formData.has_tuberculosis)   conditions.push('Tuberculosis');
+      if (formData.has_mental_health)  conditions.push('Mental Health Condition');
+      if (formData.has_kidney_disease) conditions.push('Kidney Disease');
+      if (formData.other_chronic_condition) conditions.push(formData.other_chronic_condition);
+
       const payload = {
         ...formData,
-        is_new_patient: isNewPatient   // tells backend which pickup logic to use
+        is_new_patient: isNewPatient,
+        emergency_contact_name: formData.next_of_kin_name,
+        emergency_contact_phone: formData.next_of_kin_phone,
+        // Pack extra fields into notes for now
+        notes: [
+          formData.next_of_kin_relationship ? `NOK Relationship: ${formData.next_of_kin_relationship}` : '',
+          formData.next_of_kin_address ? `NOK Address: ${formData.next_of_kin_address}` : '',
+          conditions.length > 0 ? `Chronic Conditions: ${conditions.join(', ')}` : '',
+          formData.who_stage ? `WHO Stage: ${formData.who_stage}` : '',
+          formData.cd4_count ? `CD4 Count: ${formData.cd4_count}` : '',
+          formData.viral_load ? `Viral Load: ${formData.viral_load}` : '',
+          formData.risk_notes ? `Risk Notes: ${formData.risk_notes}` : '',
+        ].filter(Boolean).join(' | ')
       };
 
-      console.log('📤 Submitting patient data:', payload);
       const response = await patientsAPI.createPatient(payload);
-      console.log('✅ Patient created:', response);
       setSuccess(true);
 
       const patientName = `${formData.first_name} ${formData.last_name}`;
       showToast({ type: 'success', title: 'Patient Registered', message: `${patientName} added successfully`, duration: 5000 });
       addNotification({ type: 'patient', title: 'New Patient Registered', message: `${patientName} (${formData.patient_number}) enrolled`, showToast: false });
 
-      // Wait for loadPatients to finish BEFORE closing modal
-      // so the new patient appears in the list immediately
       setTimeout(async () => {
         if (onSuccess) await onSuccess();
         if (onClose)   onClose();
       }, 1500);
 
     } catch (err) {
-      console.error('❌ Error creating patient:', err);
       const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Failed to register patient. Please try again.';
       setError(errorMessage);
       setLoading(false);
@@ -169,7 +199,7 @@ function PatientForm({ onClose, onSuccess }) {
 
           {/* ── Patient Identification ── */}
           <div className="form-section">
-            <h3 className="section-title">Patient Identification</h3>
+            <h3 className="section-title">🪪 Patient Identification</h3>
             <div className="form-row">
               <div className="form-group">
                 <label>Patient Number <span className="required">*</span></label>
@@ -187,7 +217,7 @@ function PatientForm({ onClose, onSuccess }) {
 
           {/* ── Personal Information ── */}
           <div className="form-section">
-            <h3 className="section-title">Personal Information</h3>
+            <h3 className="section-title">👤 Personal Information</h3>
             <div className="form-row">
               <div className="form-group">
                 <label>First Name <span className="required">*</span></label>
@@ -223,7 +253,7 @@ function PatientForm({ onClose, onSuccess }) {
                   onChange={handleChange} placeholder="+263 77 123 4567" required />
               </div>
               <div className="form-group">
-                <label>Alternative Phone (Optional)</label>
+                <label>Alternative Phone</label>
                 <input type="tel" name="alternative_phone" value={formData.alternative_phone}
                   onChange={handleChange} placeholder="+263 71 234 5678" />
               </div>
@@ -232,25 +262,22 @@ function PatientForm({ onClose, onSuccess }) {
               <label>Email Address (Optional)</label>
               <input type="email" name="email" value={formData.email}
                 onChange={handleChange} placeholder="patient@example.com" />
-              <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>
-                Used for appointment reminders and notifications
-              </small>
             </div>
           </div>
 
           {/* ── Address Information ── */}
           <div className="form-section">
-            <h3 className="section-title">Address Information</h3>
+            <h3 className="section-title">📍 Address Information</h3>
             <div className="form-group">
               <label>Address</label>
               <input type="text" name="address" value={formData.address}
-                onChange={handleChange} placeholder="Street address" />
+                onChange={handleChange} placeholder="Street address / Village" />
             </div>
             <div className="form-row">
               <div className="form-group">
-                <label>City</label>
+                <label>City / Town</label>
                 <input type="text" name="city" value={formData.city}
-                  onChange={handleChange} placeholder="City" />
+                  onChange={handleChange} placeholder="e.g. Mutare" />
               </div>
               <div className="form-group">
                 <label>Distance from Clinic (km)</label>
@@ -260,9 +287,49 @@ function PatientForm({ onClose, onSuccess }) {
             </div>
           </div>
 
-          {/* ── Medical Information ── */}
+          {/* ── Next of Kin (Mandatory) ── */}
           <div className="form-section">
-            <h3 className="section-title">Medical Information</h3>
+            <h3 className="section-title">👨‍👩‍👧 Next of Kin Details <span className="required">*</span></h3>
+            <p style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '1rem' }}>
+              All next of kin fields are required for emergency contact purposes.
+            </p>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Full Name <span className="required">*</span></label>
+                <input type="text" name="next_of_kin_name" value={formData.next_of_kin_name}
+                  onChange={handleChange} placeholder="Next of kin full name" required />
+              </div>
+              <div className="form-group">
+                <label>Relationship <span className="required">*</span></label>
+                <select name="next_of_kin_relationship" value={formData.next_of_kin_relationship} onChange={handleChange} required>
+                  <option value="">Select relationship</option>
+                  <option value="Spouse">Spouse</option>
+                  <option value="Parent">Parent</option>
+                  <option value="Child">Child</option>
+                  <option value="Sibling">Sibling</option>
+                  <option value="Guardian">Guardian</option>
+                  <option value="Friend">Friend</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Phone Number <span className="required">*</span></label>
+                <input type="tel" name="next_of_kin_phone" value={formData.next_of_kin_phone}
+                  onChange={handleChange} placeholder="+263 77 123 4567" required />
+              </div>
+              <div className="form-group">
+                <label>Address (Optional)</label>
+                <input type="text" name="next_of_kin_address" value={formData.next_of_kin_address}
+                  onChange={handleChange} placeholder="Next of kin address" />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Medical Information & Risk Factors ── */}
+          <div className="form-section">
+            <h3 className="section-title">🏥 Medical Information & Risk Factors</h3>
             <div className="form-group">
               <label>ARV Regimen</label>
               <select name="arv_regimen" value={formData.arv_regimen} onChange={handleChange}>
@@ -274,13 +341,71 @@ function PatientForm({ onClose, onSuccess }) {
                 <option value="Other">Other</option>
               </select>
             </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>WHO Clinical Stage</label>
+                <select name="who_stage" value={formData.who_stage} onChange={handleChange}>
+                  <option value="">Select WHO stage</option>
+                  <option value="1">Stage 1 (Asymptomatic)</option>
+                  <option value="2">Stage 2 (Mild)</option>
+                  <option value="3">Stage 3 (Advanced)</option>
+                  <option value="4">Stage 4 (Severe)</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>CD4 Count (cells/mm³)</label>
+                <input type="number" name="cd4_count" value={formData.cd4_count}
+                  onChange={handleChange} placeholder="e.g. 350" min="0" />
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Viral Load (copies/mL)</label>
+              <input type="number" name="viral_load" value={formData.viral_load}
+                onChange={handleChange} placeholder="e.g. 1000" min="0" />
+            </div>
+
+            {/* Chronic Conditions */}
+            <div className="form-group" style={{ marginTop: '1rem' }}>
+              <label style={{ marginBottom: '0.75rem', display: 'block', fontWeight: 600 }}>
+                Chronic Conditions (tick all that apply)
+              </label>
+              <div className="checkbox-grid">
+                {[
+                  { name: 'has_hypertension',   label: '❤️ Hypertension' },
+                  { name: 'has_diabetes',        label: '🩸 Diabetes' },
+                  { name: 'has_tuberculosis',    label: '🫁 Tuberculosis (TB)' },
+                  { name: 'has_mental_health',   label: '🧠 Mental Health Condition' },
+                  { name: 'has_kidney_disease',  label: '🫘 Kidney Disease' },
+                ].map(({ name, label }) => (
+                  <label key={name} className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      name={name}
+                      checked={formData[name]}
+                      onChange={handleChange}
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="form-group" style={{ marginTop: '0.75rem' }}>
+                <label>Other Chronic Condition</label>
+                <input type="text" name="other_chronic_condition" value={formData.other_chronic_condition}
+                  onChange={handleChange} placeholder="Specify any other chronic condition" />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Additional Risk Notes</label>
+              <textarea name="risk_notes" value={formData.risk_notes} onChange={handleChange}
+                rows="2" placeholder="Any other relevant risk information (e.g. mobility issues, transport challenges, etc.)" />
+            </div>
           </div>
 
           {/* ── Pickup Schedule ── */}
           <div className="form-section">
             <h3 className="section-title">📅 Medication Pickup Schedule</h3>
 
-            {/* Patient Type Toggle */}
             <div className="patient-type-toggle">
               <button type="button"
                 className={`toggle-btn ${isNewPatient ? 'active' : ''}`}
@@ -310,9 +435,6 @@ function PatientForm({ onClose, onSuccess }) {
                   <option value="14">Every 14 days (Fortnightly)</option>
                   <option value="7">Every 7 days (Weekly)</option>
                 </select>
-                <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>
-                  How often the patient collects medication
-                </small>
               </div>
 
               {isNewPatient ? (
@@ -344,23 +466,6 @@ function PatientForm({ onClose, onSuccess }) {
                   </small>
                 </div>
               )}
-            </div>
-          </div>
-
-          {/* ── Emergency Contact ── */}
-          <div className="form-section">
-            <h3 className="section-title">Emergency Contact (Optional)</h3>
-            <div className="form-row">
-              <div className="form-group">
-                <label>Emergency Contact Name</label>
-                <input type="text" name="emergency_contact_name" value={formData.emergency_contact_name}
-                  onChange={handleChange} placeholder="Contact person name" />
-              </div>
-              <div className="form-group">
-                <label>Emergency Contact Phone</label>
-                <input type="tel" name="emergency_contact_phone" value={formData.emergency_contact_phone}
-                  onChange={handleChange} placeholder="+263 77 123 4567" />
-              </div>
             </div>
           </div>
 

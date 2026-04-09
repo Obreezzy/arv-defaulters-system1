@@ -22,28 +22,22 @@ function PatientForm({ onClose, onSuccess }) {
     arv_regimen: '',
     pickup_frequency: '30',
     next_pickup_date: '',
-    // Next of Kin (mandatory)
     next_of_kin_name: '',
     next_of_kin_relationship: '',
     next_of_kin_phone: '',
     next_of_kin_address: '',
-    // Medical / Risk Factors
     has_hypertension: false,
     has_diabetes: false,
     has_tuberculosis: false,
     has_mental_health: false,
     has_kidney_disease: false,
     other_chronic_condition: '',
-    who_stage: '',
-    cd4_count: '',
-    viral_load: '',
-    // Additional risk notes
     risk_notes: '',
   });
 
   const [isNewPatient, setIsNewPatient] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError]     = useState(null);
   const [success, setSuccess] = useState(false);
 
   useState(() => {
@@ -60,6 +54,33 @@ function PatientForm({ onClose, onSuccess }) {
     setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
+  // Live risk score calculation
+  const calculateLiveRisk = () => {
+    let score = 0;
+    const distance = parseFloat(formData.distance_from_clinic) || 0;
+    const age = formData.date_of_birth
+      ? new Date().getFullYear() - new Date(formData.date_of_birth).getFullYear()
+      : 0;
+
+    if (distance > 25)      score += 30;
+    else if (distance > 15) score += 15;
+
+    if (age >= 18 && age <= 24) score += 20;
+    else if (age > 70)          score += 10;
+
+    if (formData.has_hypertension)   score += 10;
+    if (formData.has_diabetes)       score += 10;
+    if (formData.has_tuberculosis)   score += 15;
+    if (formData.has_mental_health)  score += 15;
+    if (formData.has_kidney_disease) score += 10;
+    if (formData.other_chronic_condition) score += 5;
+
+    score = Math.min(score, 100);
+    const label = score >= 50 ? 'High' : score >= 25 ? 'Medium' : 'Low';
+    const color = score >= 50 ? '#ef4444' : score >= 25 ? '#f97316' : '#10b981';
+    return { score, label, color };
+  };
+
   const getAutoPickupPreview = () => {
     if (!formData.enrollment_date || !formData.pickup_frequency) return null;
     const enroll = new Date(formData.enrollment_date);
@@ -74,28 +95,21 @@ function PatientForm({ onClose, onSuccess }) {
     if (!formData.gender)                            { setError('Gender is required'); return false; }
     if (!formData.enrollment_date)                   { setError('Enrollment date is required'); return false; }
     if (!formData.phone_number)                      { setError('Phone number is required'); return false; }
-
     const phoneRegex = /^[\+]?[0-9\s\-\(\)]+$/;
-    if (!phoneRegex.test(formData.phone_number)) { setError('Please enter a valid phone number'); return false; }
-
+    if (!phoneRegex.test(formData.phone_number))     { setError('Please enter a valid phone number'); return false; }
     if (formData.email) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(formData.email)) { setError('Please enter a valid email address'); return false; }
+      if (!emailRegex.test(formData.email))          { setError('Please enter a valid email address'); return false; }
     }
-
     if (new Date(formData.date_of_birth) >= new Date()) {
       setError('Date of birth must be in the past'); return false;
     }
-
-    // Next of Kin validation (mandatory)
     if (!formData.next_of_kin_name)         { setError('Next of Kin name is required'); return false; }
     if (!formData.next_of_kin_relationship) { setError('Next of Kin relationship is required'); return false; }
     if (!formData.next_of_kin_phone)        { setError('Next of Kin phone number is required'); return false; }
-
     if (isNewPatient && !formData.next_pickup_date) {
       setError('Please enter the first pickup date for this new patient'); return false;
     }
-
     setError(null);
     return true;
   };
@@ -106,42 +120,22 @@ function PatientForm({ onClose, onSuccess }) {
       showToast({ type: 'error', message: error, duration: 4000 });
       return;
     }
-
     setLoading(true);
     setError(null);
 
     try {
-      // Build chronic conditions string for risk notes
-      const conditions = [];
-      if (formData.has_hypertension)   conditions.push('Hypertension');
-      if (formData.has_diabetes)       conditions.push('Diabetes');
-      if (formData.has_tuberculosis)   conditions.push('Tuberculosis');
-      if (formData.has_mental_health)  conditions.push('Mental Health Condition');
-      if (formData.has_kidney_disease) conditions.push('Kidney Disease');
-      if (formData.other_chronic_condition) conditions.push(formData.other_chronic_condition);
-
       const payload = {
         ...formData,
         is_new_patient: isNewPatient,
         emergency_contact_name: formData.next_of_kin_name,
         emergency_contact_phone: formData.next_of_kin_phone,
-        // Pack extra fields into notes for now
-        notes: [
-          formData.next_of_kin_relationship ? `NOK Relationship: ${formData.next_of_kin_relationship}` : '',
-          formData.next_of_kin_address ? `NOK Address: ${formData.next_of_kin_address}` : '',
-          conditions.length > 0 ? `Chronic Conditions: ${conditions.join(', ')}` : '',
-          formData.who_stage ? `WHO Stage: ${formData.who_stage}` : '',
-          formData.cd4_count ? `CD4 Count: ${formData.cd4_count}` : '',
-          formData.viral_load ? `Viral Load: ${formData.viral_load}` : '',
-          formData.risk_notes ? `Risk Notes: ${formData.risk_notes}` : '',
-        ].filter(Boolean).join(' | ')
       };
 
-      const response = await patientsAPI.createPatient(payload);
+      await patientsAPI.createPatient(payload);
       setSuccess(true);
 
       const patientName = `${formData.first_name} ${formData.last_name}`;
-      showToast({ type: 'success', title: 'Patient Registered', message: `${patientName} added successfully`, duration: 5000 });
+      showToast({ type: 'success', message: `${patientName} added successfully`, duration: 5000 });
       addNotification({ type: 'patient', title: 'New Patient Registered', message: `${patientName} (${formData.patient_number}) enrolled`, showToast: false });
 
       setTimeout(async () => {
@@ -150,12 +144,14 @@ function PatientForm({ onClose, onSuccess }) {
       }, 1500);
 
     } catch (err) {
-      const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Failed to register patient. Please try again.';
+      const errorMessage = err.response?.data?.message || 'Failed to register patient.';
       setError(errorMessage);
       setLoading(false);
-      showToast({ type: 'error', title: 'Registration Failed', message: errorMessage, duration: 5000 });
+      showToast({ type: 'error', message: errorMessage, duration: 5000 });
     }
   };
+
+  const risk = calculateLiveRisk();
 
   if (success) {
     return (
@@ -190,16 +186,14 @@ function PatientForm({ onClose, onSuccess }) {
         </div>
 
         {error && (
-          <div className="form-error">
-            <span>⚠️</span> {error}
-          </div>
+          <div className="form-error"><span>⚠️</span> {error}</div>
         )}
 
         <form onSubmit={handleSubmit} className="patient-form">
 
           {/* ── Patient Identification ── */}
           <div className="form-section">
-            <h3 className="section-title">🪪 Patient Identification</h3>
+            <h3 className="section-title">Patient Identification</h3>
             <div className="form-row">
               <div className="form-group">
                 <label>Patient Number <span className="required">*</span></label>
@@ -217,7 +211,7 @@ function PatientForm({ onClose, onSuccess }) {
 
           {/* ── Personal Information ── */}
           <div className="form-section">
-            <h3 className="section-title">👤 Personal Information</h3>
+            <h3 className="section-title">Personal Information</h3>
             <div className="form-row">
               <div className="form-group">
                 <label>First Name <span className="required">*</span></label>
@@ -253,7 +247,7 @@ function PatientForm({ onClose, onSuccess }) {
                   onChange={handleChange} placeholder="+263 77 123 4567" required />
               </div>
               <div className="form-group">
-                <label>Alternative Phone</label>
+                <label>Alternative Phone (Optional)</label>
                 <input type="tel" name="alternative_phone" value={formData.alternative_phone}
                   onChange={handleChange} placeholder="+263 71 234 5678" />
               </div>
@@ -262,22 +256,25 @@ function PatientForm({ onClose, onSuccess }) {
               <label>Email Address (Optional)</label>
               <input type="email" name="email" value={formData.email}
                 onChange={handleChange} placeholder="patient@example.com" />
+              <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>
+                Used for appointment reminders and notifications
+              </small>
             </div>
           </div>
 
           {/* ── Address Information ── */}
           <div className="form-section">
-            <h3 className="section-title">📍 Address Information</h3>
+            <h3 className="section-title">Address Information</h3>
             <div className="form-group">
               <label>Address</label>
               <input type="text" name="address" value={formData.address}
-                onChange={handleChange} placeholder="Street address / Village" />
+                onChange={handleChange} placeholder="Street address" />
             </div>
             <div className="form-row">
               <div className="form-group">
-                <label>City / Town</label>
+                <label>City</label>
                 <input type="text" name="city" value={formData.city}
-                  onChange={handleChange} placeholder="e.g. Mutare" />
+                  onChange={handleChange} placeholder="City" />
               </div>
               <div className="form-group">
                 <label>Distance from Clinic (km)</label>
@@ -289,7 +286,7 @@ function PatientForm({ onClose, onSuccess }) {
 
           {/* ── Next of Kin (Mandatory) ── */}
           <div className="form-section">
-            <h3 className="section-title">👨‍👩‍👧 Next of Kin Details <span className="required">*</span></h3>
+            <h3 className="section-title">Next of Kin Details <span className="required">*</span></h3>
             <p style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '1rem' }}>
               All next of kin fields are required for emergency contact purposes.
             </p>
@@ -327,9 +324,9 @@ function PatientForm({ onClose, onSuccess }) {
             </div>
           </div>
 
-          {/* ── Medical Information & Risk Factors ── */}
+          {/* ── Medical Information ── */}
           <div className="form-section">
-            <h3 className="section-title">🏥 Medical Information & Risk Factors</h3>
+            <h3 className="section-title">Medical Information</h3>
             <div className="form-group">
               <label>ARV Regimen</label>
               <select name="arv_regimen" value={formData.arv_regimen} onChange={handleChange}>
@@ -341,28 +338,6 @@ function PatientForm({ onClose, onSuccess }) {
                 <option value="Other">Other</option>
               </select>
             </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label>WHO Clinical Stage</label>
-                <select name="who_stage" value={formData.who_stage} onChange={handleChange}>
-                  <option value="">Select WHO stage</option>
-                  <option value="1">Stage 1 (Asymptomatic)</option>
-                  <option value="2">Stage 2 (Mild)</option>
-                  <option value="3">Stage 3 (Advanced)</option>
-                  <option value="4">Stage 4 (Severe)</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>CD4 Count (cells/mm³)</label>
-                <input type="number" name="cd4_count" value={formData.cd4_count}
-                  onChange={handleChange} placeholder="e.g. 350" min="0" />
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Viral Load (copies/mL)</label>
-              <input type="number" name="viral_load" value={formData.viral_load}
-                onChange={handleChange} placeholder="e.g. 1000" min="0" />
-            </div>
 
             {/* Chronic Conditions */}
             <div className="form-group" style={{ marginTop: '1rem' }}>
@@ -371,19 +346,14 @@ function PatientForm({ onClose, onSuccess }) {
               </label>
               <div className="checkbox-grid">
                 {[
-                  { name: 'has_hypertension',   label: '❤️ Hypertension' },
-                  { name: 'has_diabetes',        label: '🩸 Diabetes' },
-                  { name: 'has_tuberculosis',    label: '🫁 Tuberculosis (TB)' },
-                  { name: 'has_mental_health',   label: '🧠 Mental Health Condition' },
-                  { name: 'has_kidney_disease',  label: '🫘 Kidney Disease' },
+                  { name: 'has_hypertension',  label: '❤️ Hypertension' },
+                  { name: 'has_diabetes',       label: '🩸 Diabetes' },
+                  { name: 'has_tuberculosis',   label: '🫁 Tuberculosis (TB)' },
+                  { name: 'has_mental_health',  label: '🧠 Mental Health Condition' },
+                  { name: 'has_kidney_disease', label: '🫘 Kidney Disease' },
                 ].map(({ name, label }) => (
                   <label key={name} className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      name={name}
-                      checked={formData[name]}
-                      onChange={handleChange}
-                    />
+                    <input type="checkbox" name={name} checked={formData[name]} onChange={handleChange} />
                     <span>{label}</span>
                   </label>
                 ))}
@@ -395,17 +365,35 @@ function PatientForm({ onClose, onSuccess }) {
               </div>
             </div>
 
-            <div className="form-group">
+            {/* ── Live AI Risk Score Bar ── */}
+            <div className="risk-preview-bar">
+              <div className="risk-preview-header">
+                <span className="risk-preview-title">🔮 AI Risk Score Preview</span>
+                <span className="risk-preview-badge" style={{ backgroundColor: risk.color }}>
+                  {risk.label} Risk
+                </span>
+              </div>
+              <div className="risk-preview-track">
+                <div className="risk-preview-fill" style={{ width: `${risk.score}%`, backgroundColor: risk.color }} />
+              </div>
+              <div className="risk-preview-footer">
+                <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>
+                  Based on distance, age & chronic conditions. Pickup history adds more weight after registration.
+                </span>
+                <span className="risk-preview-score" style={{ color: risk.color }}>{risk.score}%</span>
+              </div>
+            </div>
+
+            <div className="form-group" style={{ marginTop: '1rem' }}>
               <label>Additional Risk Notes</label>
               <textarea name="risk_notes" value={formData.risk_notes} onChange={handleChange}
-                rows="2" placeholder="Any other relevant risk information (e.g. mobility issues, transport challenges, etc.)" />
+                rows="2" placeholder="Any other relevant risk information observed by the nurse..." />
             </div>
           </div>
 
           {/* ── Pickup Schedule ── */}
           <div className="form-section">
             <h3 className="section-title">📅 Medication Pickup Schedule</h3>
-
             <div className="patient-type-toggle">
               <button type="button"
                 className={`toggle-btn ${isNewPatient ? 'active' : ''}`}
@@ -418,13 +406,11 @@ function PatientForm({ onClose, onSuccess }) {
                 🔄 Returning / Transfer Patient
               </button>
             </div>
-
             <div className="toggle-hint">
               {isNewPatient
                 ? '⚠️ New patient — please enter their first pickup date manually below.'
                 : '✅ Returning patient — pickup date will be auto-calculated from enrollment date + frequency.'}
             </div>
-
             <div className="form-row" style={{ marginTop: '1rem' }}>
               <div className="form-group">
                 <label>Pickup Frequency <span className="required">*</span></label>
@@ -436,19 +422,12 @@ function PatientForm({ onClose, onSuccess }) {
                   <option value="7">Every 7 days (Weekly)</option>
                 </select>
               </div>
-
               {isNewPatient ? (
                 <div className="form-group">
                   <label>First Pickup Date <span className="required">*</span></label>
-                  <input
-                    type="date"
-                    name="next_pickup_date"
-                    value={formData.next_pickup_date}
-                    onChange={handleChange}
-                    min={new Date().toISOString().split('T')[0]}
-                    required
-                    style={{ border: '2px solid #3b82f6' }}
-                  />
+                  <input type="date" name="next_pickup_date" value={formData.next_pickup_date}
+                    onChange={handleChange} min={new Date().toISOString().split('T')[0]}
+                    required style={{ border: '2px solid #3b82f6' }} />
                   <small style={{ color: '#3b82f6', fontSize: '0.75rem' }}>
                     Enter the date agreed with the patient
                   </small>

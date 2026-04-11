@@ -329,3 +329,34 @@
   .patients-table td { padding: 1rem 1.5rem; font-size: 0.95rem; }
   .btn-icon { width: 32px; height: 32px; font-size: 1rem; }
 }
+/* Weather notice bar on Patients page */
+.patients-weather-notice {
+  background: linear-gradient(135deg, #fff7ed, #fef3c7);
+  border: 1px solid #f97316;
+  border-left: 4px solid #f97316;
+  border-radius: 8px;
+  padding: 0.65rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  color: #92400e;
+}
+
+/* Affected patient row */
+.weather-affected-row { background-color: #fffbeb !important; }
+.weather-affected-row:hover { background-color: #fef3c7 !important; }
+
+/* Weather warning icon on patient name */
+.weather-warning-icon {
+  font-size: 0.9rem;
+  cursor: help;
+  flex-shrink: 0;
+}
+
+/* Weather boost tag under risk meter */
+.weather-boost-tag {
+  font-size: 0.68rem;
+  color: #f97316;
+  font-weight: 700;
+  margin-top: 0.2rem;
+  white-space: nowrap;
+}

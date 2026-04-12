@@ -11,20 +11,52 @@ const sendRemindersJob = async (daysAhead = 3) => {
         console.log('Started:', new Date().toISOString());
         console.log('========================================\n');
 
-        // Get patients with upcoming pickups
+        // ============================================
+        // FIXED QUERY: Checks BOTH tables
+        // 1. patients table (new patients with no pickup history)
+        // 2. medication_pickups table (returning patients)
+        // ============================================
         const patients = await query(
-            `SELECT DISTINCT ON (p.patient_id)
-                p.patient_id, p.patient_number, p.first_name, p.last_name,
-                p.phone_number, mp.next_pickup_date
-             FROM patients p
-             JOIN medication_pickups mp ON p.patient_id = mp.patient_id
-             WHERE mp.next_pickup_date = CURRENT_DATE + INTERVAL '1 day' * $1
-             AND p.is_active = true
-             AND p.phone_number IS NOT NULL
-             ORDER BY p.patient_id, mp.next_pickup_date DESC`,
+            `SELECT DISTINCT ON (patient_id)
+                patient_id, patient_number, first_name, last_name,
+                phone_number, next_pickup_date
+             FROM (
+
+                -- SOURCE 1: patients table (covers new patients)
+                SELECT
+                    p.patient_id,
+                    p.patient_number,
+                    p.first_name,
+                    p.last_name,
+                    p.phone_number,
+                    p.next_pickup_date
+                FROM patients p
+                WHERE p.next_pickup_date = CURRENT_DATE + INTERVAL '1 day' * $1
+                AND p.is_active = true
+                AND p.phone_number IS NOT NULL
+
+                UNION
+
+                -- SOURCE 2: medication_pickups table (covers returning patients)
+                SELECT
+                    p.patient_id,
+                    p.patient_number,
+                    p.first_name,
+                    p.last_name,
+                    p.phone_number,
+                    mp.next_pickup_date
+                FROM patients p
+                JOIN medication_pickups mp ON p.patient_id = mp.patient_id
+                WHERE mp.next_pickup_date = CURRENT_DATE + INTERVAL '1 day' * $1
+                AND p.is_active = true
+                AND p.phone_number IS NOT NULL
+
+             ) combined_results
+             ORDER BY patient_id, next_pickup_date DESC`,
             [daysAhead]
         );
 
+        // No patients found for this date
         if (patients.rows.length === 0) {
             console.log(`No patients with pickups in ${daysAhead} days`);
             console.log('\n========================================');
@@ -36,12 +68,21 @@ const sendRemindersJob = async (daysAhead = 3) => {
 
         console.log(`Found ${patients.rows.length} patients to remind\n`);
 
+        // Log who will be reminded
+        patients.rows.forEach((p, i) => {
+            console.log(`  ${i + 1}. ${p.first_name} ${p.last_name} (${p.patient_number}) → ${p.phone_number} | Pickup: ${p.next_pickup_date}`);
+        });
+
+        console.log('\n');
+
+        // ============================================
         // Prepare SMS batch
+        // ============================================
         const recipients = patients.rows.map(patient => {
             const pickupDate = convertToDisplayDate(patient.next_pickup_date);
             return {
                 phoneNumber: patient.phone_number,
-                message: `Hello ${patient.first_name}, reminder: Your medication pickup is due on ${pickupDate}. Please collect on time. Stay healthy!`,
+                message: `Hello ${patient.first_name}, reminder: Your ARV medication pickup is due on ${pickupDate}. Please collect on time. Stay healthy!`,
                 messageType: `reminder_${daysAhead}days`,
                 patientId: patient.patient_id
             };
@@ -52,6 +93,17 @@ const sendRemindersJob = async (daysAhead = 3) => {
 
         console.log(`\nReminders sent: ${result.successful}/${result.total}`);
         console.log(`Failed: ${result.failed}`);
+
+        // Log individual results
+        if (result.results) {
+            result.results.forEach(r => {
+                if (r.success) {
+                    console.log(`  ✅ Sent to patient ${r.patientId} → SID: ${r.messageSid}`);
+                } else {
+                    console.log(`  ❌ Failed for patient ${r.patientId} → ${r.error}`);
+                }
+            });
+        }
 
         console.log('\n========================================');
         console.log('Job completed successfully');
@@ -80,7 +132,9 @@ const sendRemindersJob = async (daysAhead = 3) => {
     }
 };
 
-// Convert YYYY-MM-DD to DD-MM-YYYY
+// ============================================
+// Convert YYYY-MM-DD to DD-MM-YYYY for SMS
+// ============================================
 const convertToDisplayDate = (yyyymmdd) => {
     if (!yyyymmdd) return '';
     const date = new Date(yyyymmdd);

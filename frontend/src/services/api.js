@@ -40,36 +40,82 @@ export const usersAPI = {
 };
 
 export const dashboardAPI = {
-  getStats: async () => { const response = await api.get('/dashboards/stats'); return response.data; }
+  getStats: async () => { 
+      const response = await api.get('/dashboard/overview'); 
+      return response.data; 
+  }
 };
 
 export const patientsAPI = {
-  getAllPatients: async () => { const response = await api.get('/patients'); return response.data; },
-  getPatientById: async (id) => { const response = await api.get(`/patients/${id}`); return response.data; },
-  createPatient: async (patientData) => { const response = await api.post('/patients', patientData); return response.data; },
-  updatePatient: async (id, patientData) => { const response = await api.put(`/patients/${id}`, patientData); return response.data; },
-  predictRisk: async () => { const response = await api.post('/patients/predict'); return response.data; }
+  getAllPatients: async () => { 
+      const response = await api.get('/patients'); 
+      return response.data; 
+  },
+  getPatientById: async (id) => { 
+      const response = await api.get(`/patients/${id}`); 
+      return response.data; 
+  },
+  createPatient: async (patientData) => { 
+      const response = await api.post('/patients', patientData); 
+      return response.data; 
+  },
+  updatePatient: async (id, patientData) => { 
+      const response = await api.put(`/patients/${id}`, patientData); 
+      return response.data; 
+  },
+  predictRisk: async () => { 
+      const response = await api.post('/patients/predict'); 
+      return response.data; 
+  }
 };
 
 export const defaultersAPI = {
-  getAllDefaulters: async () => { const response = await api.get('/defaulters'); return response.data; },
-  runDetection: async () => { const response = await api.post('/defaulters/detect', { grace_period: 3 }); return response.data; },
-  resolveDefaulter: async (id, resolutionData) => { const response = await api.put(`/defaulters/${id}/resolve`, resolutionData); return response.data; }
+  getAllDefaulters: async () => { 
+      const response = await api.get('/defaulters'); 
+      return response.data; 
+  },
+  runDetection: async () => { 
+      const response = await api.post('/defaulters/detect', { grace_period: 3 }); 
+      return response.data; 
+  },
+  resolveDefaulter: async (id, resolutionData) => { 
+      const response = await api.put(`/defaulters/${id}/resolve`, resolutionData); 
+      return response.data; 
+  }
 };
 
 export const pickupsAPI = {
-  recordPickup: async (pickupData) => { const response = await api.post('/pickups/record', pickupData); return response.data; },
-  getPatientPickups: async (patientId) => { const response = await api.get(`/pickups/patient/${patientId}`); return response.data; }
+  recordPickup: async (pickupData) => { 
+      const response = await api.post('/pickups/record', pickupData); 
+      return response.data; 
+  },
+  getPatientPickups: async (patientId) => { 
+      const response = await api.get(`/pickups/patient/${patientId}`); 
+      return response.data; 
+  }
 };
 
+// ✅ FIXED: now points to correct backend route
 export const smsAPI = {
-  sendReminder: async (smsData) => { const response = await api.post('/sms/send', smsData); return response.data; }
+  sendReminder: async (defaulterId) => { 
+      const response = await api.post('/sms/send-reminder', { defaulterId }); 
+      return response.data; 
+  }
 };
 
+// ✅ Scheduler API - used by Send Reminders button on Dashboard
 export const schedulerAPI = {
   sendReminders: async (days = 1) => {
-    const response = await api.post('/scheduler/trigger/send-reminders', { days });
-    return response.data;
+      const response = await api.post('/scheduler/trigger/send-reminders', { days });
+      return response.data;
+  },
+  triggerDetection: async () => {
+      const response = await api.post('/scheduler/trigger/detect-defaulters');
+      return response.data;
+  },
+  getStatus: async () => {
+      const response = await api.get('/scheduler/status');
+      return response.data;
   }
 };
 

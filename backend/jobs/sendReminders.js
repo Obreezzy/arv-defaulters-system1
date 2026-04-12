@@ -82,7 +82,7 @@ const sendRemindersJob = async (daysAhead = 3) => {
             const pickupDate = convertToDisplayDate(patient.next_pickup_date);
             return {
                 phoneNumber: patient.phone_number,
-                message: `Hello ${patient.first_name}, reminder: Your ARV medication pickup is due on ${pickupDate}. Please collect on time. Stay healthy!`,
+                message: `Hello ${patient.first_name}, reminder: Your medication pickup is due on ${pickupDate}. Please collect on time. Stay healthy!`,
                 messageType: `reminder_${daysAhead}days`,
                 patientId: patient.patient_id
             };

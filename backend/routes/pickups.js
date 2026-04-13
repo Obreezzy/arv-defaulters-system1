@@ -17,7 +17,7 @@ const calculateNextPickupDate = (pickupDate, frequencyDays) => {
  */
 router.post('/record', async (req, res) => {
   try {
-    const { patient_id, pickup_date, next_pickup_date, quantity_dispensed, notes } = req.body;
+    const { patient_id, pickup_date, next_pickup_date, quantity_dispensed, clinic_number, nurse_number, dispensing_clinic, notes } = req.body;
 
     console.log('📅 Recording pickup - received data:', {
       patient_id, pickup_date, next_pickup_date, quantity_dispensed, notes
@@ -89,8 +89,9 @@ router.post('/record', async (req, res) => {
     const insertQuery = `
       INSERT INTO medication_pickups (
         patient_id, treatment_id, scheduled_date, actual_pickup_date,
-        next_pickup_date, quantity_dispensed, days_supply, notes
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        next_pickup_date, quantity_dispensed, days_supply,
+        clinic_number, nurse_number, dispensing_clinic, notes
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
     `;
 
@@ -102,6 +103,9 @@ router.post('/record', async (req, res) => {
       computed_next_pickup,
       quantity_dispensed || 30,
       days_supply,
+      clinic_number  || null,
+      nurse_number   || null,
+      dispensing_clinic || null,
       notes || null
     ];
 

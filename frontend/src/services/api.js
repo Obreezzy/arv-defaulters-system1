@@ -63,8 +63,9 @@ export const patientsAPI = {
       const response = await api.put(`/patients/${id}`, patientData); 
       return response.data; 
   },
-  predictRisk: async () => { 
-      const response = await api.post('/patients/predict'); 
+  // ✅ UPDATED: Now accepts activeWeatherAlerts and sends them to the backend
+  predictRisk: async (activeWeatherAlerts = []) => { 
+      const response = await api.post('/patients/predict', { activeWeatherAlerts }); 
       return response.data; 
   }
 };
@@ -95,7 +96,6 @@ export const pickupsAPI = {
   }
 };
 
-// ✅ FIXED: now points to correct backend route
 export const smsAPI = {
   sendReminder: async (defaulterId) => { 
       const response = await api.post('/sms/send-reminder', { defaulterId }); 
@@ -103,7 +103,6 @@ export const smsAPI = {
   }
 };
 
-// ✅ Scheduler API - used by Send Reminders button on Dashboard
 export const schedulerAPI = {
   sendReminders: async (days = 1) => {
       const response = await api.post('/scheduler/trigger/send-reminders', { days });

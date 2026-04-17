@@ -4,7 +4,8 @@
  * It uses a Weighted Factor Model commonly used in medical expert systems.
  */
 
-const calculateRiskScore = (patient, daysOverdue, pastDefaults = 0) => {
+// Added 'activeWeatherAlerts' as an optional parameter (defaults to an empty array)
+const calculateRiskScore = (patient, daysOverdue, pastDefaults = 0, activeWeatherAlerts = []) => {
     let riskScore = 0;
     let riskFactors = [];
 
@@ -54,6 +55,20 @@ const calculateRiskScore = (patient, daysOverdue, pastDefaults = 0) => {
     } else if (pastDefaults > 0) {
         riskScore += 10;
         riskFactors.push("Previous Default Record");
+    }
+
+    // 5. WEATHER & LOCATION BARRIER (New Addition)
+    // Check if the patient's location matches any active weather alerts (like "Chikanga")
+    // Fallback to empty string if location/address is undefined to prevent crashes
+    const patientLocation = (patient.location || patient.address || "").toLowerCase();
+    
+    const isAffectedByWeather = activeWeatherAlerts.some(
+        alertLocation => patientLocation.includes(alertLocation.toLowerCase())
+    );
+
+    if (isAffectedByWeather) {
+        riskScore += 15; // Added a 15% penalty for severe weather conditions
+        riskFactors.push("Active Weather Alert in Area");
     }
 
     // CAP SCORE AT 100

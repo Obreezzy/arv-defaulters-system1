@@ -9,12 +9,16 @@ router.use(verifyToken);
 // 1. 🔮 PREDICT RISK FOR ALL PATIENTS
 // ==========================================
 router.post('/predict', async (req, res) => {
+    // Catch the active weather alerts sent from the React frontend
+    const activeWeatherAlerts = req.body.activeWeatherAlerts || [];
+    
     const client = await getClient();
     try {
         await client.query('BEGIN');
 
+        // Added 'city' to the SELECT statement so we can check weather locations
         const result = await client.query(`
-            SELECT patient_id, date_of_birth, distance_from_clinic, gender, address
+            SELECT patient_id, date_of_birth, distance_from_clinic, gender, address, city
             FROM patients WHERE is_active = true
         `);
 
@@ -36,7 +40,9 @@ router.post('/predict', async (req, res) => {
                 ) sub
             `, [patient.patient_id]);
 
-            const prediction = predictRisk(patient, historyResult.rows[0]);
+            // Pass the active alerts into the prediction engine
+            const prediction = predictRisk(patient, historyResult.rows[0], activeWeatherAlerts);
+            
             await client.query(`
                 UPDATE patients SET risk_score=$1, risk_level=$2, risk_factors=$3 WHERE patient_id=$4
             `, [prediction.score, prediction.label, JSON.stringify(prediction.factors), patient.patient_id]);
@@ -47,6 +53,7 @@ router.post('/predict', async (req, res) => {
         res.json({ success: true, message: `Analyzed ${updatedCount} patients` });
     } catch (err) {
         await client.query('ROLLBACK');
+        console.error("Prediction error:", err);
         res.status(500).json({ success: false, message: 'Prediction failed' });
     } finally {
         client.release();
@@ -222,7 +229,8 @@ router.put('/:id', async (req, res) => {
 // ==========================================
 // 🧠 PREDICTIVE LOGIC
 // ==========================================
-const predictRisk = (patient, history) => {
+// Added activeWeatherAlerts as a parameter
+const predictRisk = (patient, history, activeWeatherAlerts = []) => {
     let score = 0, factors = [];
     const distance = isNaN(parseFloat(patient.distance_from_clinic)) ? 0 : parseFloat(patient.distance_from_clinic);
     const age = getAge(patient.date_of_birth);
@@ -237,6 +245,20 @@ const predictRisk = (patient, history) => {
 
     if (age >= 18 && age <= 24) { score += 20; factors.push("High-Risk Age Group (18-24)"); }
     else if (age > 70)          { score += 10; factors.push("Geriatric Vulnerability"); }
+
+    // --- WEATHER ALERT BOOST LOGIC ---
+    // Safely check city or address, falling back to empty string
+    const patientLocation = (patient.city || patient.address || "").toLowerCase();
+    
+    const isAffectedByWeather = activeWeatherAlerts.some(
+        alertLocation => patientLocation.includes(alertLocation.toLowerCase())
+    );
+
+    if (isAffectedByWeather) {
+        score += 15; // You can change this penalty weight if you want
+        factors.push("Active Weather/Disaster Alert in Area");
+    }
+    // ---------------------------------
 
     score = Math.min(score, 100);
     let label = score >= 50 ? 'High' : score >= 25 ? 'Medium' : 'Low';

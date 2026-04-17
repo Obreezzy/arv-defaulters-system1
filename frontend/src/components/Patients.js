@@ -42,7 +42,16 @@ function Patients({ initialRiskFilter = 'All' }) {
     try {
       setAnalyzing(true);
       showToast({ type: 'info', message: '🔮 Running Predictive Analysis...' });
-      await patientsAPI.predictRisk(); 
+      
+      // ✅ FIX: Get the active alerts from your Dashboard's local storage helper
+      const alerts = getActiveAlerts();
+      
+      // ✅ FIX: Extract just the location names (e.g., ["Chikanga", "Sakubva"])
+      const alertLocations = alerts.map(alert => alert.affectedArea);
+      
+      // ✅ FIX: Pass the alert locations to your updated api.js function
+      await patientsAPI.predictRisk(alertLocations); 
+      
       showToast({ type: 'success', message: 'Prediction Complete! Updating list...' });
       await loadPatients(); 
     } catch (err) {

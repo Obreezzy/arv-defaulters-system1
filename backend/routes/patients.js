@@ -16,9 +16,9 @@ router.post('/predict', async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // Added 'city' to the SELECT statement so we can check weather locations
+        // ✅ FIX: Added the new rural fields to the SELECT statement
         const result = await client.query(`
-            SELECT patient_id, date_of_birth, distance_from_clinic, gender, address, city
+            SELECT patient_id, date_of_birth, distance_from_clinic, gender, district, ward, village, headman
             FROM patients WHERE is_active = true
         `);
 
@@ -84,9 +84,10 @@ router.get('/', async (req, res) => {
 // 3. CREATE PATIENT
 // ==========================================
 router.post('/', async (req, res) => {
+    // ✅ FIX: Replaced address and city with rural fields
     const {
         patient_number, first_name, last_name, date_of_birth, gender,
-        phone_number, alternative_phone, email, address, city,
+        phone_number, alternative_phone, email, district, ward, village, headman,
         distance_from_clinic, enrollment_date, arv_regimen,
         pickup_frequency, next_pickup_date, is_new_patient,
         emergency_contact_name, emergency_contact_phone
@@ -132,17 +133,18 @@ router.post('/', async (req, res) => {
             finalPickupDate = calc.toISOString().split('T')[0];
         }
 
+        // ✅ FIX: Updated the INSERT statement
         const result = await query(
             `INSERT INTO patients (
                 patient_number, first_name, last_name, date_of_birth, gender,
-                phone_number, alternative_phone, email, address, city,
+                phone_number, alternative_phone, email, district, ward, village, headman,
                 distance_from_clinic, enrollment_date, arv_regimen,
                 pickup_frequency, next_pickup_date,
                 emergency_contact_name, emergency_contact_phone,
                 created_by
             ) VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-                $11,$12,$13,$14,$15,$16,$17,$18
+                $11,$12,$13,$14,$15,$16,$17,$18,$19,$20
             ) RETURNING *`,
             [
                 patient_number || `P-${Date.now()}`,
@@ -150,8 +152,10 @@ router.post('/', async (req, res) => {
                 phone_number,
                 alternative_phone    || null,
                 email                || null,
-                address              || null,
-                city                 || null,
+                district             || null,
+                ward                 || null,
+                village              || null,
+                headman              || null,
                 distance_from_clinic || 0,
                 enrollment_date,
                 arv_regimen          || null,
@@ -188,29 +192,33 @@ router.get('/:id', async (req, res) => {
 // 5. UPDATE PATIENT
 // ==========================================
 router.put('/:id', async (req, res) => {
+    // ✅ FIX: Replaced address and city with rural fields
     const {
         first_name, last_name, date_of_birth, gender, phone_number,
-        alternative_phone, email, address, city, distance_from_clinic,
+        alternative_phone, email, district, ward, village, headman, distance_from_clinic,
         arv_regimen, emergency_contact_name, emergency_contact_phone,
         next_pickup_date, pickup_frequency
     } = req.body;
 
     try {
+        // ✅ FIX: Updated the UPDATE statement
         const result = await query(
             `UPDATE patients SET
                 first_name=$1, last_name=$2, date_of_birth=$3, gender=$4,
                 phone_number=$5, alternative_phone=$6, email=$7,
-                address=$8, city=$9, distance_from_clinic=$10,
-                arv_regimen=$11, emergency_contact_name=$12,
-                emergency_contact_phone=$13, next_pickup_date=$14,
-                pickup_frequency=$15
-             WHERE patient_id=$16 RETURNING *`,
+                district=$8, ward=$9, village=$10, headman=$11, distance_from_clinic=$12,
+                arv_regimen=$13, emergency_contact_name=$14,
+                emergency_contact_phone=$15, next_pickup_date=$16,
+                pickup_frequency=$17
+             WHERE patient_id=$18 RETURNING *`,
             [
                 first_name, last_name, date_of_birth, gender, phone_number,
                 alternative_phone    || null,
                 email                || null,
-                address              || null,
-                city                 || null,
+                district             || null,
+                ward                 || null,
+                village              || null,
+                headman              || null,
                 distance_from_clinic,
                 arv_regimen          || null,
                 emergency_contact_name  || null,
@@ -229,7 +237,6 @@ router.put('/:id', async (req, res) => {
 // ==========================================
 // 🧠 PREDICTIVE LOGIC
 // ==========================================
-// Added activeWeatherAlerts as a parameter
 const predictRisk = (patient, history, activeWeatherAlerts = []) => {
     let score = 0, factors = [];
     const distance = isNaN(parseFloat(patient.distance_from_clinic)) ? 0 : parseFloat(patient.distance_from_clinic);
@@ -247,15 +254,15 @@ const predictRisk = (patient, history, activeWeatherAlerts = []) => {
     else if (age > 70)          { score += 10; factors.push("Geriatric Vulnerability"); }
 
     // --- WEATHER ALERT BOOST LOGIC ---
-    // Safely check city or address, falling back to empty string
-    const patientLocation = (patient.city || patient.address || "").toLowerCase();
+    // ✅ FIX: Engine now checks the new rural fields
+    const patientLocation = `${patient.district || ''} ${patient.ward || ''} ${patient.village || ''} ${patient.headman || ''}`.toLowerCase();
     
     const isAffectedByWeather = activeWeatherAlerts.some(
         alertLocation => patientLocation.includes(alertLocation.toLowerCase())
     );
 
     if (isAffectedByWeather) {
-        score += 15; // You can change this penalty weight if you want
+        score += 15; 
         factors.push("Active Weather/Disaster Alert in Area");
     }
     // ---------------------------------

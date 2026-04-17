@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './Reports.css';
-import { defaultersAPI, patientsAPI, pickupsAPI } from '../services/api'; // ✅ Added pickupsAPI
+import { defaultersAPI, patientsAPI, pickupsAPI } from '../services/api'; 
 import { useNotifications } from '../contexts/NotificationContext';
 import LineChart from './charts/LineChart';
 import jsPDF from 'jspdf';
@@ -120,8 +120,7 @@ function Reports() {
     showToast({ type: 'success', message: 'Summary PDF generated!' });
   };
 
-  // ── 2. Patient-Specific Report (UPDATED WITH CLINICAL DATA) ────────
-  // ✅ Made this function async so it can fetch the pickup history
+  // ── 2. Patient-Specific Report (UPDATED: CLEAN UI, NO EMOJIS) ────────
   const generatePatientPDF = async () => {
     const patient = patientsData.find(p => p.patient_id === parseInt(selectedPatient));
     if (!patient) { showToast({ type: 'error', message: 'Please select a patient first' }); return; }
@@ -140,14 +139,14 @@ function Reports() {
     const doc = new jsPDF();
     pdfHeader(doc, `Patient Report: ${patient.first_name} ${patient.last_name}`);
 
-    // Check if this patient is currently a defaulter to put a warning at the top
     const isDefaulter = defaultersData.find(d => d.patient_id === patient.patient_id);
     let startY = 50;
 
     if (isDefaulter) {
       doc.setFontSize(12); doc.setFont('helvetica','bold');
       doc.setTextColor(239,68,68);
-      doc.text(`⚠ URGENT: Patient is currently a defaulter (${isDefaulter.days_overdue} days overdue)`, 14, startY);
+      // Removed emojis to prevent PDF garbling
+      doc.text(`URGENT: Patient is currently a defaulter (${isDefaulter.days_overdue} days overdue)`, 14, startY);
       doc.setTextColor(0,0,0);
       startY += 10;
     }
@@ -163,7 +162,6 @@ function Reports() {
         ['Date of Birth',     fmtDate(patient.date_of_birth)],
         ['Gender',            patient.gender || 'N/A'],
         ['Phone',             patient.phone_number || 'N/A'],
-        // ✅ Updated to Rural Fields
         ['District',          patient.district || 'N/A'],
         ['Ward',              patient.ward || 'N/A'],
         ['Village',           patient.village || 'N/A'],
@@ -180,47 +178,20 @@ function Reports() {
       columnStyles: { 0: { fontStyle:'bold', cellWidth: 60 } }
     });
 
-    // ── AI Risk & Adherence Summary Section ──
-    const y2 = doc.lastAutoTable.finalY + 10;
+    // ── Recent Pickup History Section (AI section removed entirely) ──
+    const nextY = doc.lastAutoTable.finalY + 15;
     doc.setFontSize(13); doc.setFont('helvetica','bold');
-    doc.text('🤖 AI Risk & Adherence Summary', 14, y2);
-    
-    let riskFactors = [];
-    try {
-        riskFactors = typeof patient.risk_factors === 'string' ? JSON.parse(patient.risk_factors) : (patient.risk_factors || []);
-    } catch(e) {}
+    doc.text('Recent Pickup History', 14, nextY); // Clean title without emojis
 
-    let summaryBody = [];
-    if (riskFactors.length > 0) {
-        riskFactors.forEach(factor => summaryBody.push([`⚠️ Detected Risk: ${factor}`]));
-    } else {
-        summaryBody.push(['✅ No significant risk factors detected by the AI.']);
-    }
-    summaryBody.push([`📊 Total Historical Pickups on Record: ${history.length}`]);
-
-    autoTable(doc, {
-      startY: y2 + 5,
-      body: summaryBody,
-      theme: 'plain',
-      styles: { fontSize: 10, textColor: [71, 85, 105] },
-      cellPadding: 1
-    });
-
-    // ── Recent Pickup History Section ──
-    const y3 = doc.lastAutoTable.finalY + 10;
-    doc.setFontSize(13); doc.setFont('helvetica','bold');
-    doc.text('📅 Recent Pickup History', 14, y3);
-
-    // Map the history array to a table format, calculating if it was late
     const historyBody = history.slice(0, 15).map((pickup, index) => {
         const actualDate = new Date(pickup.actual_pickup_date);
-        const prevRecord = history[index + 1]; // Previous record is next in the array because of DESC sorting
+        const prevRecord = history[index + 1]; 
         const expectedDate = prevRecord ? new Date(prevRecord.next_pickup_date) : null;
         
         let status = 'On Time';
         if (expectedDate && actualDate > expectedDate) {
             const daysLate = Math.floor((actualDate - expectedDate) / (1000 * 60 * 60 * 24));
-            status = `⚠ ${daysLate} Days Late`;
+            status = `${daysLate} Days Late`; // Removed emojis
         } else if (!expectedDate) {
             status = 'First Record';
         }
@@ -239,20 +210,19 @@ function Reports() {
     }
 
     autoTable(doc, {
-      startY: y3 + 5,
+      startY: nextY + 5,
       head: [['Actual Pickup', 'Expected Date', 'Status', 'Dispensed', 'Notes']],
       body: historyBody,
-      headStyles: { fillColor: [59, 130, 246] }, // Blue header
+      headStyles: { fillColor: [59, 130, 246] }, 
       alternateRowStyles: { fillColor: [241, 245, 249] },
       styles: { fontSize: 9 },
       didParseCell: function(data) {
-          // Color code the status column to red if they were late
           if (data.section === 'body' && data.column.index === 2) {
               if (data.cell.raw.includes('Late')) {
-                  data.cell.styles.textColor = [220, 38, 38]; // Red
+                  data.cell.styles.textColor = [220, 38, 38]; // Clean Red Text
                   data.cell.styles.fontStyle = 'bold';
               } else if (data.cell.raw.includes('On Time')) {
-                  data.cell.styles.textColor = [22, 163, 74]; // Green
+                  data.cell.styles.textColor = [22, 163, 74]; // Clean Green Text
               }
           }
       }

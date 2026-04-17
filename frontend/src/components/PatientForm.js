@@ -16,7 +16,6 @@ function PatientForm({ onClose, onSuccess }) {
     phone_number: '',
     alternative_phone: '',
     email: '',
-    // UPDATED: Replaced address/city with rural fields
     district: '',
     ward: '',
     village: '',
@@ -36,6 +35,10 @@ function PatientForm({ onClose, onSuccess }) {
     has_kidney_disease: false,
     other_chronic_condition: '',
     risk_notes: '',
+    // ✅ NEW CLINIC FIELDS ADDED HERE
+    clinic_number: '',
+    nurse_number: '',
+    dispensing_clinic: ''
   });
 
   const [isNewPatient, setIsNewPatient] = useState(true);
@@ -57,7 +60,6 @@ function PatientForm({ onClose, onSuccess }) {
     setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
-  // Live risk score calculation
   const calculateLiveRisk = () => {
     let score = 0;
     const distance = parseFloat(formData.distance_from_clinic) || 0;
@@ -100,6 +102,11 @@ function PatientForm({ onClose, onSuccess }) {
     if (!formData.phone_number)                      { setError('Phone number is required'); return false; }
     const phoneRegex = /^[\+]?[0-9\s\-\(\)]+$/;
     if (!phoneRegex.test(formData.phone_number))     { setError('Please enter a valid phone number'); return false; }
+    
+    // ✅ Added validation for new clinic fields
+    if (!formData.clinic_number)                     { setError('Clinic Number is required'); return false; }
+    if (!formData.nurse_number)                      { setError('Nurse Number is required'); return false; }
+
     if (formData.email) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(formData.email))          { setError('Please enter a valid email address'); return false; }
@@ -406,6 +413,37 @@ function PatientForm({ onClose, onSuccess }) {
             </div>
           </div>
 
+          {/* ── Registration Clinic Details ── */}
+          <div className="form-section">
+            <h3 className="section-title">🏥 Registration Clinic Details</h3>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Clinic Number <span className="required">*</span></label>
+                <input type="text" name="clinic_number" value={formData.clinic_number}
+                  onChange={handleChange} placeholder="e.g. CLN-001" required />
+                <small style={{ color: '#6b7280', fontSize: '0.75rem', marginTop: '0.25rem', display: 'block' }}>
+                  Patient can use this at any clinic
+                </small>
+              </div>
+              <div className="form-group">
+                <label>Nurse Number <span className="required">*</span></label>
+                <input type="text" name="nurse_number" value={formData.nurse_number}
+                  onChange={handleChange} placeholder="e.g. NRS-045" required />
+                <small style={{ color: '#6b7280', fontSize: '0.75rem', marginTop: '0.25rem', display: 'block' }}>
+                  Nurse registering the patient
+                </small>
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Dispensing Clinic Name (Optional)</label>
+              <input type="text" name="dispensing_clinic" value={formData.dispensing_clinic}
+                onChange={handleChange} placeholder="e.g. Sakubva Clinic, Mutare" />
+              <small style={{ color: '#6b7280', fontSize: '0.75rem', marginTop: '0.25rem', display: 'block' }}>
+                Name of the registering clinic
+              </small>
+            </div>
+          </div>
+
           {/* ── Pickup Schedule ── */}
           <div className="form-section">
             <h3 className="section-title">📅 Medication Pickup Schedule</h3>
@@ -443,7 +481,7 @@ function PatientForm({ onClose, onSuccess }) {
                   <input type="date" name="next_pickup_date" value={formData.next_pickup_date}
                     onChange={handleChange} min={new Date().toISOString().split('T')[0]}
                     required style={{ border: '2px solid #3b82f6' }} />
-                  <small style={{ color: '#3b82f6', fontSize: '0.75rem' }}>
+                  <small style={{ color: '#3b82f6', fontSize: '0.75rem', marginTop: '0.25rem', display: 'block' }}>
                     Enter the date agreed with the patient
                   </small>
                 </div>
@@ -455,7 +493,7 @@ function PatientForm({ onClose, onSuccess }) {
                     readOnly
                     style={{ backgroundColor: '#f0fdf4', color: '#166534', fontWeight: 600, border: '2px solid #bbf7d0' }}
                   />
-                  <small style={{ color: '#166534', fontSize: '0.75rem' }}>
+                  <small style={{ color: '#166534', fontSize: '0.75rem', marginTop: '0.25rem', display: 'block' }}>
                     Enrollment date + {formData.pickup_frequency} days
                   </small>
                 </div>

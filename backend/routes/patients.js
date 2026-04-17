@@ -9,14 +9,12 @@ router.use(verifyToken);
 // 1. 🔮 PREDICT RISK FOR ALL PATIENTS
 // ==========================================
 router.post('/predict', async (req, res) => {
-    // Catch the active weather alerts sent from the React frontend
     const activeWeatherAlerts = req.body.activeWeatherAlerts || [];
     
     const client = await getClient();
     try {
         await client.query('BEGIN');
 
-        // ✅ FIX: Added the new rural fields to the SELECT statement
         const result = await client.query(`
             SELECT patient_id, date_of_birth, distance_from_clinic, gender, district, ward, village, headman
             FROM patients WHERE is_active = true
@@ -40,7 +38,6 @@ router.post('/predict', async (req, res) => {
                 ) sub
             `, [patient.patient_id]);
 
-            // Pass the active alerts into the prediction engine
             const prediction = predictRisk(patient, historyResult.rows[0], activeWeatherAlerts);
             
             await client.query(`
@@ -84,36 +81,24 @@ router.get('/', async (req, res) => {
 // 3. CREATE PATIENT
 // ==========================================
 router.post('/', async (req, res) => {
-    // ✅ FIX: Replaced address and city with rural fields
     const {
         patient_number, first_name, last_name, date_of_birth, gender,
         phone_number, alternative_phone, email, district, ward, village, headman,
         distance_from_clinic, enrollment_date, arv_regimen,
         pickup_frequency, next_pickup_date, is_new_patient,
-        emergency_contact_name, emergency_contact_phone
+        emergency_contact_name, emergency_contact_phone,
+        clinic_number, nurse_number, dispensing_clinic // ✅ Added new clinic fields
     } = req.body;
 
-    const userId =
-        req.user?.id        ||
-        req.user?.user_id   ||
-        req.user?.userId    ||
-        req.user?.sub       ||
-        req.user?.ID        ||
-        null;
-
+    const userId = req.user?.id || req.user?.user_id || req.user?.userId || req.user?.sub || req.user?.ID || null;
     let createdByName = 'Unknown';
 
     if (userId) {
         try {
-            const userResult = await query(
-                `SELECT username, first_name, last_name FROM users WHERE user_id = $1`,
-                [userId]
-            );
+            const userResult = await query(`SELECT username, first_name, last_name FROM users WHERE user_id = $1`, [userId]);
             if (userResult.rows.length > 0) {
                 const u = userResult.rows[0];
-                createdByName = (u.first_name && u.last_name)
-                    ? `${u.first_name} ${u.last_name}`
-                    : u.username;
+                createdByName = (u.first_name && u.last_name) ? `${u.first_name} ${u.last_name}` : u.username;
             }
         } catch (e) {
             console.error('User lookup failed:', e.message);
@@ -133,7 +118,6 @@ router.post('/', async (req, res) => {
             finalPickupDate = calc.toISOString().split('T')[0];
         }
 
-        // ✅ FIX: Updated the INSERT statement
         const result = await query(
             `INSERT INTO patients (
                 patient_number, first_name, last_name, date_of_birth, gender,
@@ -141,29 +125,18 @@ router.post('/', async (req, res) => {
                 distance_from_clinic, enrollment_date, arv_regimen,
                 pickup_frequency, next_pickup_date,
                 emergency_contact_name, emergency_contact_phone,
-                created_by
+                created_by, clinic_number, nurse_number, dispensing_clinic
             ) VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-                $11,$12,$13,$14,$15,$16,$17,$18,$19,$20
+                $11,$12,$13,$14,$15,$16,$17,$18,$19,$20, $21,$22,$23
             ) RETURNING *`,
             [
-                patient_number || `P-${Date.now()}`,
-                first_name, last_name, date_of_birth, gender,
-                phone_number,
-                alternative_phone    || null,
-                email                || null,
-                district             || null,
-                ward                 || null,
-                village              || null,
-                headman              || null,
-                distance_from_clinic || 0,
-                enrollment_date,
-                arv_regimen          || null,
-                freq,
-                finalPickupDate,
-                emergency_contact_name  || null,
-                emergency_contact_phone || null,
-                createdByName
+                patient_number || `P-${Date.now()}`, first_name, last_name, date_of_birth, gender,
+                phone_number, alternative_phone || null, email || null, district || null, ward || null, 
+                village || null, headman || null, distance_from_clinic || 0, enrollment_date, arv_regimen || null,
+                freq, finalPickupDate, emergency_contact_name || null, emergency_contact_phone || null,
+                createdByName,
+                clinic_number || null, nurse_number || null, dispensing_clinic || null // ✅ Saving new data
             ]
         );
 
@@ -192,16 +165,14 @@ router.get('/:id', async (req, res) => {
 // 5. UPDATE PATIENT
 // ==========================================
 router.put('/:id', async (req, res) => {
-    // ✅ FIX: Replaced address and city with rural fields
     const {
         first_name, last_name, date_of_birth, gender, phone_number,
         alternative_phone, email, district, ward, village, headman, distance_from_clinic,
         arv_regimen, emergency_contact_name, emergency_contact_phone,
-        next_pickup_date, pickup_frequency
+        next_pickup_date, pickup_frequency, clinic_number, nurse_number, dispensing_clinic
     } = req.body;
 
     try {
-        // ✅ FIX: Updated the UPDATE statement
         const result = await query(
             `UPDATE patients SET
                 first_name=$1, last_name=$2, date_of_birth=$3, gender=$4,
@@ -209,22 +180,14 @@ router.put('/:id', async (req, res) => {
                 district=$8, ward=$9, village=$10, headman=$11, distance_from_clinic=$12,
                 arv_regimen=$13, emergency_contact_name=$14,
                 emergency_contact_phone=$15, next_pickup_date=$16,
-                pickup_frequency=$17
-             WHERE patient_id=$18 RETURNING *`,
+                pickup_frequency=$17, clinic_number=$18, nurse_number=$19, dispensing_clinic=$20
+             WHERE patient_id=$21 RETURNING *`,
             [
-                first_name, last_name, date_of_birth, gender, phone_number,
-                alternative_phone    || null,
-                email                || null,
-                district             || null,
-                ward                 || null,
-                village              || null,
-                headman              || null,
-                distance_from_clinic,
-                arv_regimen          || null,
-                emergency_contact_name  || null,
-                emergency_contact_phone || null,
-                next_pickup_date     || null,
-                pickup_frequency     || 30,
+                first_name, last_name, date_of_birth, gender, phone_number, alternative_phone || null,
+                email || null, district || null, ward || null, village || null, headman || null, distance_from_clinic,
+                arv_regimen || null, emergency_contact_name || null, emergency_contact_phone || null,
+                next_pickup_date || null, pickup_frequency || 30,
+                clinic_number || null, nurse_number || null, dispensing_clinic || null,
                 req.params.id
             ]
         );
@@ -253,10 +216,7 @@ const predictRisk = (patient, history, activeWeatherAlerts = []) => {
     if (age >= 18 && age <= 24) { score += 20; factors.push("High-Risk Age Group (18-24)"); }
     else if (age > 70)          { score += 10; factors.push("Geriatric Vulnerability"); }
 
-    // --- WEATHER ALERT BOOST LOGIC ---
-    // ✅ FIX: Engine now checks the new rural fields
     const patientLocation = `${patient.district || ''} ${patient.ward || ''} ${patient.village || ''} ${patient.headman || ''}`.toLowerCase();
-    
     const isAffectedByWeather = activeWeatherAlerts.some(
         alertLocation => patientLocation.includes(alertLocation.toLowerCase())
     );
@@ -265,7 +225,6 @@ const predictRisk = (patient, history, activeWeatherAlerts = []) => {
         score += 15; 
         factors.push("Active Weather/Disaster Alert in Area");
     }
-    // ---------------------------------
 
     score = Math.min(score, 100);
     let label = score >= 50 ? 'High' : score >= 25 ? 'Medium' : 'Low';

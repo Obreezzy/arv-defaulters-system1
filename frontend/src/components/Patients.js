@@ -43,13 +43,9 @@ function Patients({ initialRiskFilter = 'All' }) {
       setAnalyzing(true);
       showToast({ type: 'info', message: '🔮 Running Predictive Analysis...' });
       
-      // ✅ FIX: Get the active alerts from your Dashboard's local storage helper
       const alerts = getActiveAlerts();
-      
-      // ✅ FIX: Extract just the location names (e.g., ["Chikanga", "Sakubva"])
       const alertLocations = alerts.map(alert => alert.affectedArea);
       
-      // ✅ FIX: Pass the alert locations to your updated api.js function
       await patientsAPI.predictRisk(alertLocations); 
       
       showToast({ type: 'success', message: 'Prediction Complete! Updating list...' });
@@ -64,10 +60,12 @@ function Patients({ initialRiskFilter = 'All' }) {
   // Check if a patient is in an alerted area
   const getPatientAlerts = (patient) => {
     if (!activeAlerts.length) return [];
-    const city = (patient.city || patient.address || '').toLowerCase();
+    // Update to match rural fields
+    const locationString = `${patient.district || ''} ${patient.ward || ''} ${patient.village || ''} ${patient.headman || ''}`.toLowerCase();
+    
     return activeAlerts.filter(alert =>
-      city.includes(alert.affectedArea.toLowerCase()) ||
-      alert.affectedArea.toLowerCase().includes(city)
+      locationString.includes(alert.affectedArea.toLowerCase()) ||
+      alert.affectedArea.toLowerCase().includes(locationString)
     );
   };
 
@@ -214,7 +212,8 @@ function Patients({ initialRiskFilter = 'All' }) {
                         </div>
                       </td>
                       <td>{age}</td>
-                      <td>{p.distance_from_clinic ? `${p.distance_from_clinic} km` : 'Unknown'}</td>
+                      {/* ✅ FIX: Removed decimals by rounding the number */}
+                      <td>{p.distance_from_clinic ? `${Math.round(Number(p.distance_from_clinic))} km` : 'Unknown'}</td>
                       <td>
                         {p.next_pickup_date ? (
                           <span className={`pickup-badge pickup-${pickupStatus}`}>

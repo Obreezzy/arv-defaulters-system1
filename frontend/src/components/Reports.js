@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './Reports.css';
-import { defaultersAPI, patientsAPI } from '../services/api';
+import { defaultersAPI, patientsAPI, pickupsAPI } from '../services/api'; // ✅ Added pickupsAPI
 import { useNotifications } from '../contexts/NotificationContext';
 import LineChart from './charts/LineChart';
 import jsPDF from 'jspdf';
@@ -120,53 +120,146 @@ function Reports() {
     showToast({ type: 'success', message: 'Summary PDF generated!' });
   };
 
-  // ── 2. Patient-Specific Report ────────────────────────────
-  const generatePatientPDF = () => {
+  // ── 2. Patient-Specific Report (UPDATED WITH CLINICAL DATA) ────────
+  // ✅ Made this function async so it can fetch the pickup history
+  const generatePatientPDF = async () => {
     const patient = patientsData.find(p => p.patient_id === parseInt(selectedPatient));
     if (!patient) { showToast({ type: 'error', message: 'Please select a patient first' }); return; }
+
+    setLoading(true);
+    showToast({ type: 'info', message: 'Gathering patient history...' });
+
+    let history = [];
+    try {
+        const res = await pickupsAPI.getPatientPickups(patient.patient_id);
+        history = res.pickups || res.data || [];
+    } catch (err) {
+        console.error("Failed to fetch history", err);
+    }
 
     const doc = new jsPDF();
     pdfHeader(doc, `Patient Report: ${patient.first_name} ${patient.last_name}`);
 
+    // Check if this patient is currently a defaulter to put a warning at the top
+    const isDefaulter = defaultersData.find(d => d.patient_id === patient.patient_id);
+    let startY = 50;
+
+    if (isDefaulter) {
+      doc.setFontSize(12); doc.setFont('helvetica','bold');
+      doc.setTextColor(239,68,68);
+      doc.text(`⚠ URGENT: Patient is currently a defaulter (${isDefaulter.days_overdue} days overdue)`, 14, startY);
+      doc.setTextColor(0,0,0);
+      startY += 10;
+    }
+
     doc.setFontSize(13); doc.setFont('helvetica','bold');
-    doc.text('Patient Profile', 14, 50);
+    doc.text('Patient Profile', 14, startY);
 
     autoTable(doc, {
-      startY: 55,
+      startY: startY + 5,
       body: [
         ['Patient Number',    patient.patient_number],
         ['Full Name',         `${patient.first_name} ${patient.last_name}`],
         ['Date of Birth',     fmtDate(patient.date_of_birth)],
         ['Gender',            patient.gender || 'N/A'],
         ['Phone',             patient.phone_number || 'N/A'],
-        ['Address',           patient.address || 'N/A'],
-        ['City',              patient.city || 'N/A'],
-        ['Distance from Clinic', patient.distance_from_clinic ? `${patient.distance_from_clinic} km` : 'N/A'],
+        // ✅ Updated to Rural Fields
+        ['District',          patient.district || 'N/A'],
+        ['Ward',              patient.ward || 'N/A'],
+        ['Village',           patient.village || 'N/A'],
+        ['Headman / Sabhuku', patient.headman || 'N/A'],
+        ['Distance from Clinic', patient.distance_from_clinic ? `${Math.round(patient.distance_from_clinic)} km` : 'N/A'],
         ['ARV Regimen',       patient.arv_regimen || 'N/A'],
         ['Pickup Frequency',  patient.pickup_frequency ? `Every ${patient.pickup_frequency} days` : 'N/A'],
-        ['Next Pickup Date',  fmtDate(patient.next_pickup_date)],
         ['Risk Level',        patient.risk_level || 'N/A'],
-        ['Risk Score',        patient.risk_score ? `${patient.risk_score}%` : 'N/A'],
-        ['Enrollment Date',   fmtDate(patient.enrollment_date)],
-        ['Status',            patient.is_active ? 'Active' : 'Inactive'],
+        ['Risk Score',        patient.risk_score ? `${patient.risk_score}%` : 'N/A']
       ],
       theme: 'striped',
       headStyles: { fillColor: [30,64,175] },
       styles: { fontSize: 10 },
-      columnStyles: { 0: { fontStyle:'bold', cellWidth: 70 } }
+      columnStyles: { 0: { fontStyle:'bold', cellWidth: 60 } }
     });
 
-    // Check if this patient is a defaulter
-    const isDefaulter = defaultersData.find(d => d.patient_id === patient.patient_id);
-    if (isDefaulter) {
-      const y2 = doc.lastAutoTable.finalY + 10;
-      doc.setFontSize(12); doc.setFont('helvetica','bold');
-      doc.setTextColor(239,68,68);
-      doc.text(`⚠ Patient is currently a defaulter (${isDefaulter.days_overdue} days overdue)`, 14, y2);
-      doc.setTextColor(0,0,0);
+    // ── AI Risk & Adherence Summary Section ──
+    const y2 = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(13); doc.setFont('helvetica','bold');
+    doc.text('🤖 AI Risk & Adherence Summary', 14, y2);
+    
+    let riskFactors = [];
+    try {
+        riskFactors = typeof patient.risk_factors === 'string' ? JSON.parse(patient.risk_factors) : (patient.risk_factors || []);
+    } catch(e) {}
+
+    let summaryBody = [];
+    if (riskFactors.length > 0) {
+        riskFactors.forEach(factor => summaryBody.push([`⚠️ Detected Risk: ${factor}`]));
+    } else {
+        summaryBody.push(['✅ No significant risk factors detected by the AI.']);
+    }
+    summaryBody.push([`📊 Total Historical Pickups on Record: ${history.length}`]);
+
+    autoTable(doc, {
+      startY: y2 + 5,
+      body: summaryBody,
+      theme: 'plain',
+      styles: { fontSize: 10, textColor: [71, 85, 105] },
+      cellPadding: 1
+    });
+
+    // ── Recent Pickup History Section ──
+    const y3 = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(13); doc.setFont('helvetica','bold');
+    doc.text('📅 Recent Pickup History', 14, y3);
+
+    // Map the history array to a table format, calculating if it was late
+    const historyBody = history.slice(0, 15).map((pickup, index) => {
+        const actualDate = new Date(pickup.actual_pickup_date);
+        const prevRecord = history[index + 1]; // Previous record is next in the array because of DESC sorting
+        const expectedDate = prevRecord ? new Date(prevRecord.next_pickup_date) : null;
+        
+        let status = 'On Time';
+        if (expectedDate && actualDate > expectedDate) {
+            const daysLate = Math.floor((actualDate - expectedDate) / (1000 * 60 * 60 * 24));
+            status = `⚠ ${daysLate} Days Late`;
+        } else if (!expectedDate) {
+            status = 'First Record';
+        }
+
+        return [
+            fmtDate(pickup.actual_pickup_date),
+            expectedDate ? fmtDate(expectedDate) : 'N/A',
+            status,
+            pickup.quantity_dispensed || '30',
+            pickup.notes || '-'
+        ];
+    });
+
+    if (historyBody.length === 0) {
+        historyBody.push(['No pickup history available for this patient.', '', '', '', '']);
     }
 
+    autoTable(doc, {
+      startY: y3 + 5,
+      head: [['Actual Pickup', 'Expected Date', 'Status', 'Dispensed', 'Notes']],
+      body: historyBody,
+      headStyles: { fillColor: [59, 130, 246] }, // Blue header
+      alternateRowStyles: { fillColor: [241, 245, 249] },
+      styles: { fontSize: 9 },
+      didParseCell: function(data) {
+          // Color code the status column to red if they were late
+          if (data.section === 'body' && data.column.index === 2) {
+              if (data.cell.raw.includes('Late')) {
+                  data.cell.styles.textColor = [220, 38, 38]; // Red
+                  data.cell.styles.fontStyle = 'bold';
+              } else if (data.cell.raw.includes('On Time')) {
+                  data.cell.styles.textColor = [22, 163, 74]; // Green
+              }
+          }
+      }
+    });
+
     doc.save(`Patient_Report_${patient.patient_number}.pdf`);
+    setLoading(false);
     showToast({ type: 'success', message: `Report for ${patient.first_name} generated!` });
   };
 
@@ -189,7 +282,7 @@ function Reports() {
             p.patient_number,
             p.risk_level?.toUpperCase() || 'N/A',
             p.risk_score ? `${p.risk_score}%` : '0%',
-            p.distance_from_clinic ? `${p.distance_from_clinic}km` : 'N/A',
+            p.distance_from_clinic ? `${Math.round(p.distance_from_clinic)}km` : 'N/A',
             fmtDate(p.next_pickup_date),
             p.phone_number || 'N/A'
           ])
@@ -245,7 +338,10 @@ function Reports() {
       'Gender':         p.gender,
       'Date of Birth':  fmtDate(p.date_of_birth),
       'Phone':          p.phone_number,
-      'City':           p.city,
+      'District':       p.district,
+      'Ward':           p.ward,
+      'Village':        p.village,
+      'Headman':        p.headman,
       'Distance (km)':  p.distance_from_clinic,
       'ARV Regimen':    p.arv_regimen,
       'Risk Level':     p.risk_level,
@@ -296,7 +392,7 @@ function Reports() {
   if (loading) return (
     <div className="loading-state">
       <div className="spinner"></div>
-      <p>Preparing reports...</p>
+      <p>Processing data...</p>
     </div>
   );
 

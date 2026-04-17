@@ -70,10 +70,11 @@ function WeatherAlertModal({ onClose, onSave }) {
             </select>
           </div>
           <div className="wm-group">
-            <label>Affected Area / City <span style={{color:'#ef4444'}}>*</span></label>
+            {/* UPDATED LABEL AND PLACEHOLDER FOR RURAL LOCATIONS */}
+            <label>Affected Area (Ward, Village, or District) <span style={{color:'#ef4444'}}>*</span></label>
             <input
               type="text"
-              placeholder="e.g. Dangamvura, Sakubva, Mutare"
+              placeholder="e.g. Ward 12, Chigodora Village, Mutasa District"
               value={affectedArea}
               onChange={e => setAffectedArea(e.target.value)}
             />
@@ -83,7 +84,7 @@ function WeatherAlertModal({ onClose, onSave }) {
             <label>Description (Optional)</label>
             <textarea
               rows="2"
-              placeholder="e.g. Heavy flooding reported along Sakubva River, roads impassable"
+              placeholder="e.g. Heavy flooding reported along the river, bridges washed away"
               value={description}
               onChange={e => setDescription(e.target.value)}
             />

@@ -17,8 +17,11 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
     phone_number: patient.phone_number || patient.phone || '',
     alternative_phone: patient.alternative_phone || '',
     email: patient.email || '',
-    address: patient.address || '',
-    city: patient.city || '',
+    // UPDATED: Pre-fill rural location fields
+    district: patient.district || '',
+    ward: patient.ward || '',
+    village: patient.village || '',
+    headman: patient.headman || '',
     distance_from_clinic: patient.distance_from_clinic || '',
     arv_regimen: patient.arv_regimen || patient.regimen || '',
     emergency_contact_name: patient.emergency_contact_name || '',
@@ -305,34 +308,59 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
             </div>
           </div>
 
-          {/* Address Information */}
+          {/* Rural Location Information */}
           <div className="form-section">
-            <h3 className="section-title">Address Information</h3>
+            <h3 className="section-title">Rural Location Information</h3>
             
-            <div className="form-group">
-              <label>Address</label>
-              <input
-                type="text"
-                name="address"
-                value={formData.address}
-                onChange={handleChange}
-                placeholder="Street address"
-              />
-            </div>
-
             <div className="form-row">
               <div className="form-group">
-                <label>City</label>
+                <label>District</label>
                 <input
                   type="text"
-                  name="city"
-                  value={formData.city}
+                  name="district"
+                  value={formData.district}
                   onChange={handleChange}
-                  placeholder="City"
+                  placeholder="e.g. Mutasa"
                 />
               </div>
 
               <div className="form-group">
+                <label>Ward</label>
+                <input
+                  type="text"
+                  name="ward"
+                  value={formData.ward}
+                  onChange={handleChange}
+                  placeholder="e.g. Ward 14"
+                />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label>Village</label>
+                <input
+                  type="text"
+                  name="village"
+                  value={formData.village}
+                  onChange={handleChange}
+                  placeholder="e.g. Chigodora"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Headman / Sabhuku</label>
+                <input
+                  type="text"
+                  name="headman"
+                  value={formData.headman}
+                  onChange={handleChange}
+                  placeholder="e.g. Sabhuku Muchabaiwa"
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
                 <label>Distance from Clinic (km)</label>
                 <input
                   type="number"
@@ -344,7 +372,6 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
                   step="0.1"
                 />
               </div>
-            </div>
           </div>
 
           {/* Medical Information */}

@@ -16,8 +16,11 @@ function PatientForm({ onClose, onSuccess }) {
     phone_number: '',
     alternative_phone: '',
     email: '',
-    address: '',
-    city: '',
+    // UPDATED: Replaced address/city with rural fields
+    district: '',
+    ward: '',
+    village: '',
+    headman: '',
     distance_from_clinic: '',
     arv_regimen: '',
     pickup_frequency: '30',
@@ -262,25 +265,37 @@ function PatientForm({ onClose, onSuccess }) {
             </div>
           </div>
 
-          {/* ── Address Information ── */}
+          {/* ── Rural Location Information ── */}
           <div className="form-section">
-            <h3 className="section-title">Address Information</h3>
-            <div className="form-group">
-              <label>Address</label>
-              <input type="text" name="address" value={formData.address}
-                onChange={handleChange} placeholder="Street address" />
+            <h3 className="section-title">Rural Location Information</h3>
+            <div className="form-row">
+              <div className="form-group">
+                <label>District</label>
+                <input type="text" name="district" value={formData.district}
+                  onChange={handleChange} placeholder="e.g. Mutasa" />
+              </div>
+              <div className="form-group">
+                <label>Ward</label>
+                <input type="text" name="ward" value={formData.ward}
+                  onChange={handleChange} placeholder="e.g. Ward 14" />
+              </div>
             </div>
             <div className="form-row">
               <div className="form-group">
-                <label>City</label>
-                <input type="text" name="city" value={formData.city}
-                  onChange={handleChange} placeholder="City" />
+                <label>Village</label>
+                <input type="text" name="village" value={formData.village}
+                  onChange={handleChange} placeholder="e.g. Chigodora" />
               </div>
               <div className="form-group">
-                <label>Distance from Clinic (km)</label>
-                <input type="number" name="distance_from_clinic" value={formData.distance_from_clinic}
-                  onChange={handleChange} placeholder="e.g., 5" min="0" step="0.1" />
+                <label>Headman / Sabhuku</label>
+                <input type="text" name="headman" value={formData.headman}
+                  onChange={handleChange} placeholder="e.g. Sabhuku Muchabaiwa" />
               </div>
+            </div>
+            <div className="form-group">
+              <label>Distance from Clinic (km)</label>
+              <input type="number" name="distance_from_clinic" value={formData.distance_from_clinic}
+                onChange={handleChange} placeholder="e.g., 5" min="0" step="0.1" />
             </div>
           </div>
 
@@ -317,9 +332,9 @@ function PatientForm({ onClose, onSuccess }) {
                   onChange={handleChange} placeholder="+263 77 123 4567" required />
               </div>
               <div className="form-group">
-                <label>Address (Optional)</label>
+                <label>Address / Village (Optional)</label>
                 <input type="text" name="next_of_kin_address" value={formData.next_of_kin_address}
-                  onChange={handleChange} placeholder="Next of kin address" />
+                  onChange={handleChange} placeholder="Next of kin location" />
               </div>
             </div>
           </div>

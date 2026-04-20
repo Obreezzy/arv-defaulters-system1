@@ -78,18 +78,25 @@ function PatientForm({ onClose, onSuccess }) {
     if (wholeNumFields.includes(name) && !wholeNumberOnly.test(value)) return;
     if (phoneFields.includes(name)    && !phoneChars.test(value))      return;
 
-    // Block invalid DOB years as-you-type using raw string — avoids Invalid Date issue
+    // Block invalid DOB years as-you-type
     if (name === 'date_of_birth' && value) {
-      const yearStr = value.split('-')[0];
-      if (yearStr.length === 4) {
-        const year = parseInt(yearStr, 10);
-        if (year < 1946 || year > 2018) return;
-      }
+      const year = new Date(value).getFullYear();
+      if (year < 1946 || year > 2018) return;
     }
 
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+
+  const handleDobBlur = (e) => {
+    const value = e.target.value; // format: YYYY-MM-DD
+    if (!value) return;
+    const year = parseInt(value.split('-')[0], 10);
+    if (year < 1946 || year > 2018) {
+      setFormData(prev => ({ ...prev, date_of_birth: '' }));
+      setError('Date of birth must be between 1946 and 2018');
+    }
+  };
   const calculateLiveRisk = () => {
     let score = 0;
     const distance = parseFloat(formData.distance_from_clinic) || 0;
@@ -289,7 +296,7 @@ function PatientForm({ onClose, onSuccess }) {
               <div className="form-group">
                 <label>Date of Birth <span className="required">*</span></label>
                 <input type="date" name="date_of_birth" value={formData.date_of_birth}
-                  onChange={handleChange} min="1946-01-01" max={new Date().toISOString().split('T')[0]} required />
+                  onChange={handleChange} onBlur={handleDobBlur} min="1946-01-01" max="2018-12-31" required />
               </div>
               <div className="form-group">
                 <label>Gender <span className="required">*</span></label>

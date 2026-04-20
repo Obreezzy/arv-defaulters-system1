@@ -47,6 +47,12 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
     if (wholeNumFields.includes(name) && !wholeNumberOnly.test(value)) return;
     if (phoneFields.includes(name)    && !phoneChars.test(value))      return;
 
+    // Block invalid DOB years as-you-type
+    if (name === 'date_of_birth' && value) {
+      const year = new Date(value).getFullYear();
+      if (year < 1946 || year > 2018) return;
+    }
+
     setFormData({ ...formData, [name]: value });
   };
 

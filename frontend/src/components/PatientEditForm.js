@@ -85,6 +85,7 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
     const dob = new Date(formData.date_of_birth);
     const today = new Date();
     if (dob >= today) return fail('Date of birth must be in the past');
+    if (dob < new Date('1946-01-01')) return fail('Date of birth cannot be before 1946 — please check the year entered');
 
     setError(null);
     return null;
@@ -263,6 +264,7 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
                   name="date_of_birth"
                   value={formData.date_of_birth}
                   onChange={handleChange}
+                  min="1946-01-01"
                   max={new Date().toISOString().split('T')[0]}
                   required
                 />

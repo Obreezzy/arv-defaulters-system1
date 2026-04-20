@@ -152,6 +152,7 @@ function PatientForm({ onClose, onSuccess }) {
       if (!emailRegex.test(formData.email)) return fail('Please enter a valid email address');
     }
     if (new Date(formData.date_of_birth) >= new Date()) return fail('Date of birth must be in the past');
+    if (new Date(formData.date_of_birth) < new Date('1946-01-01')) return fail('Date of birth cannot be before 1946 — please check the year entered');
 
     if (!formData.next_of_kin_name)         return fail('Next of Kin name is required');
     if (!lettersOnly.test(formData.next_of_kin_name)) return fail('Next of Kin name must contain letters only');
@@ -279,7 +280,7 @@ function PatientForm({ onClose, onSuccess }) {
               <div className="form-group">
                 <label>Date of Birth <span className="required">*</span></label>
                 <input type="date" name="date_of_birth" value={formData.date_of_birth}
-                  onChange={handleChange} max={new Date().toISOString().split('T')[0]} required />
+                  onChange={handleChange} min="1946-01-01" max={new Date().toISOString().split('T')[0]} required />
               </div>
               <div className="form-group">
                 <label>Gender <span className="required">*</span></label>

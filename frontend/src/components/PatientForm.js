@@ -57,7 +57,28 @@ function PatientForm({ onClose, onSuccess }) {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+
+    if (type === 'checkbox') {
+      setFormData(prev => ({ ...prev, [name]: checked }));
+      return;
+    }
+
+    // Letters only (allow spaces, hyphens, apostrophes for names/places)
+    const lettersOnly    = /^[a-zA-Z\s\-'.]*$/;
+    // Whole numbers only
+    const wholeNumberOnly = /^\d*$/;
+    // Phone: digits, +, spaces, hyphens, parentheses
+    const phoneChars     = /^[\+\d\s\-\(\)]*$/;
+
+    const letterFields   = ['first_name', 'last_name', 'district', 'village', 'headman', 'next_of_kin_name'];
+    const wholeNumFields = ['ward', 'distance_from_clinic'];
+    const phoneFields    = ['phone_number', 'alternative_phone', 'next_of_kin_phone'];
+
+    if (letterFields.includes(name)   && !lettersOnly.test(value))    return;
+    if (wholeNumFields.includes(name) && !wholeNumberOnly.test(value)) return;
+    if (phoneFields.includes(name)    && !phoneChars.test(value))      return;
+
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const calculateLiveRisk = () => {
@@ -96,32 +117,51 @@ function PatientForm({ onClose, onSuccess }) {
   const validateForm = () => {
     const fail = (msg) => { setError(msg); return msg; };
 
+    const lettersOnly    = /^[a-zA-Z\s\-'.]+$/;
+    const wholeNumberOnly = /^\d+$/;
+    const phoneRegex     = /^[\+]?[0-9\s\-\(\)]+$/;
+
     if (!formData.patient_number)                    return fail('Patient number is required');
     if (!formData.first_name || !formData.last_name) return fail('First and last name are required');
+    if (!lettersOnly.test(formData.first_name))      return fail('First name must contain letters only');
+    if (!lettersOnly.test(formData.last_name))       return fail('Last name must contain letters only');
     if (!formData.date_of_birth)                     return fail('Date of birth is required');
     if (!formData.gender)                            return fail('Gender is required');
     if (!formData.enrollment_date)                   return fail('Enrollment date is required');
     if (!formData.phone_number)                      return fail('Phone number is required');
-    const phoneRegex = /^[\+]?[0-9\s\-\(\)]+$/;
-    if (!phoneRegex.test(formData.phone_number))     return fail('Please enter a valid phone number');
+    if (!phoneRegex.test(formData.phone_number))     return fail('Phone number must contain numbers only');
 
-    // ✅ Added validation for new clinic fields
-    if (!formData.clinic_number)                     return fail('Clinic Number is required');
-    if (!formData.nurse_number)                      return fail('Nurse Number is required');
+    if (formData.alternative_phone && !phoneRegex.test(formData.alternative_phone))
+      return fail('Alternative phone must contain numbers only');
+    if (formData.ward && !wholeNumberOnly.test(formData.ward))
+      return fail('Ward must be a whole number (e.g. 14)');
+    if (formData.distance_from_clinic && !wholeNumberOnly.test(formData.distance_from_clinic))
+      return fail('Distance from clinic must be a whole number');
+    if (formData.district && !lettersOnly.test(formData.district))
+      return fail('District must contain letters only');
+    if (formData.village && !lettersOnly.test(formData.village))
+      return fail('Village must contain letters only');
+    if (formData.headman && !lettersOnly.test(formData.headman))
+      return fail('Headman name must contain letters only');
+
+    if (!formData.clinic_number) return fail('Clinic Number is required');
+    if (!formData.nurse_number)  return fail('Nurse Number is required');
 
     if (formData.email) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(formData.email))          return fail('Please enter a valid email address');
+      if (!emailRegex.test(formData.email)) return fail('Please enter a valid email address');
     }
     if (new Date(formData.date_of_birth) >= new Date()) return fail('Date of birth must be in the past');
 
     if (!formData.next_of_kin_name)         return fail('Next of Kin name is required');
+    if (!lettersOnly.test(formData.next_of_kin_name)) return fail('Next of Kin name must contain letters only');
     if (!formData.next_of_kin_relationship) return fail('Next of Kin relationship is required');
     if (!formData.next_of_kin_phone)        return fail('Next of Kin phone number is required');
+    if (!phoneRegex.test(formData.next_of_kin_phone)) return fail('Next of Kin phone must contain numbers only');
     if (isNewPatient && !formData.next_pickup_date) return fail('Please enter the first pickup date for this new patient');
 
     setError(null);
-    return null; // null = no error
+    return null;
   };
 
   const handleSubmit = async (e) => {
@@ -303,7 +343,7 @@ function PatientForm({ onClose, onSuccess }) {
             <div className="form-group">
               <label>Distance from Clinic (km)</label>
               <input type="number" name="distance_from_clinic" value={formData.distance_from_clinic}
-                onChange={handleChange} placeholder="e.g., 5" min="0" step="0.1" />
+                onChange={handleChange} placeholder="e.g., 5" min="0" step="1" />
             </div>
           </div>
 

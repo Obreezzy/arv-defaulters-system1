@@ -34,29 +34,60 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({
-      ...formData,
-      [name]: value
-    });
+
+    const lettersOnly    = /^[a-zA-Z\s\-'.]*$/;
+    const wholeNumberOnly = /^\d*$/;
+    const phoneChars     = /^[\+\d\s\-\(\)]*$/;
+
+    const letterFields   = ['first_name', 'last_name', 'district', 'village', 'headman', 'emergency_contact_name'];
+    const wholeNumFields = ['ward', 'distance_from_clinic'];
+    const phoneFields    = ['phone_number', 'alternative_phone', 'emergency_contact_phone'];
+
+    if (letterFields.includes(name)   && !lettersOnly.test(value))    return;
+    if (wholeNumFields.includes(name) && !wholeNumberOnly.test(value)) return;
+    if (phoneFields.includes(name)    && !phoneChars.test(value))      return;
+
+    setFormData({ ...formData, [name]: value });
   };
 
   const validateForm = () => {
     const fail = (msg) => { setError(msg); return msg; };
 
+    const lettersOnly    = /^[a-zA-Z\s\-'.]+$/;
+    const wholeNumberOnly = /^\d+$/;
+    const phoneRegex     = /^[\+]?[0-9\s\-\(\)]+$/;
+
     if (!formData.first_name || !formData.last_name) return fail('First name and last name are required');
+    if (!lettersOnly.test(formData.first_name))      return fail('First name must contain letters only');
+    if (!lettersOnly.test(formData.last_name))       return fail('Last name must contain letters only');
     if (!formData.date_of_birth)                     return fail('Date of birth is required');
     if (!formData.gender)                            return fail('Gender is required');
     if (!formData.phone_number)                      return fail('Phone number is required');
+    if (!phoneRegex.test(formData.phone_number))     return fail('Phone number must contain numbers only');
 
-    const phoneRegex = /^[\+]?[0-9\s\-\(\)]+$/;
-    if (!phoneRegex.test(formData.phone_number))     return fail('Please enter a valid phone number');
+    if (formData.alternative_phone && !phoneRegex.test(formData.alternative_phone))
+      return fail('Alternative phone must contain numbers only');
+    if (formData.ward && !wholeNumberOnly.test(formData.ward))
+      return fail('Ward must be a whole number (e.g. 14)');
+    if (formData.distance_from_clinic && !wholeNumberOnly.test(String(formData.distance_from_clinic)))
+      return fail('Distance from clinic must be a whole number');
+    if (formData.district && !lettersOnly.test(formData.district))
+      return fail('District must contain letters only');
+    if (formData.village && !lettersOnly.test(formData.village))
+      return fail('Village must contain letters only');
+    if (formData.headman && !lettersOnly.test(formData.headman))
+      return fail('Headman name must contain letters only');
+    if (formData.emergency_contact_name && !lettersOnly.test(formData.emergency_contact_name))
+      return fail('Emergency contact name must contain letters only');
+    if (formData.emergency_contact_phone && !phoneRegex.test(formData.emergency_contact_phone))
+      return fail('Emergency contact phone must contain numbers only');
 
     const dob = new Date(formData.date_of_birth);
     const today = new Date();
     if (dob >= today) return fail('Date of birth must be in the past');
 
     setError(null);
-    return null; // null = no error
+    return null;
   };
 
   const handleSubmit = async (e) => {
@@ -351,7 +382,7 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
                   onChange={handleChange}
                   placeholder="e.g., 5"
                   min="0"
-                  step="0.1"
+                  step="1"
                 />
               </div>
           </div>

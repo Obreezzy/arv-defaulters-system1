@@ -94,40 +94,41 @@ function PatientForm({ onClose, onSuccess }) {
   };
 
   const validateForm = () => {
-    if (!formData.patient_number)                    { setError('Patient number is required'); return false; }
-    if (!formData.first_name || !formData.last_name) { setError('First and last name are required'); return false; }
-    if (!formData.date_of_birth)                     { setError('Date of birth is required'); return false; }
-    if (!formData.gender)                            { setError('Gender is required'); return false; }
-    if (!formData.enrollment_date)                   { setError('Enrollment date is required'); return false; }
-    if (!formData.phone_number)                      { setError('Phone number is required'); return false; }
+    const fail = (msg) => { setError(msg); return msg; };
+
+    if (!formData.patient_number)                    return fail('Patient number is required');
+    if (!formData.first_name || !formData.last_name) return fail('First and last name are required');
+    if (!formData.date_of_birth)                     return fail('Date of birth is required');
+    if (!formData.gender)                            return fail('Gender is required');
+    if (!formData.enrollment_date)                   return fail('Enrollment date is required');
+    if (!formData.phone_number)                      return fail('Phone number is required');
     const phoneRegex = /^[\+]?[0-9\s\-\(\)]+$/;
-    if (!phoneRegex.test(formData.phone_number))     { setError('Please enter a valid phone number'); return false; }
-    
+    if (!phoneRegex.test(formData.phone_number))     return fail('Please enter a valid phone number');
+
     // ✅ Added validation for new clinic fields
-    if (!formData.clinic_number)                     { setError('Clinic Number is required'); return false; }
-    if (!formData.nurse_number)                      { setError('Nurse Number is required'); return false; }
+    if (!formData.clinic_number)                     return fail('Clinic Number is required');
+    if (!formData.nurse_number)                      return fail('Nurse Number is required');
 
     if (formData.email) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(formData.email))          { setError('Please enter a valid email address'); return false; }
+      if (!emailRegex.test(formData.email))          return fail('Please enter a valid email address');
     }
-    if (new Date(formData.date_of_birth) >= new Date()) {
-      setError('Date of birth must be in the past'); return false;
-    }
-    if (!formData.next_of_kin_name)         { setError('Next of Kin name is required'); return false; }
-    if (!formData.next_of_kin_relationship) { setError('Next of Kin relationship is required'); return false; }
-    if (!formData.next_of_kin_phone)        { setError('Next of Kin phone number is required'); return false; }
-    if (isNewPatient && !formData.next_pickup_date) {
-      setError('Please enter the first pickup date for this new patient'); return false;
-    }
+    if (new Date(formData.date_of_birth) >= new Date()) return fail('Date of birth must be in the past');
+
+    if (!formData.next_of_kin_name)         return fail('Next of Kin name is required');
+    if (!formData.next_of_kin_relationship) return fail('Next of Kin relationship is required');
+    if (!formData.next_of_kin_phone)        return fail('Next of Kin phone number is required');
+    if (isNewPatient && !formData.next_pickup_date) return fail('Please enter the first pickup date for this new patient');
+
     setError(null);
-    return true;
+    return null; // null = no error
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validateForm()) {
-      showToast({ type: 'error', message: error, duration: 4000 });
+    const validationError = validateForm();
+    if (validationError) {
+      showToast({ type: 'error', message: validationError, duration: 4000 });
       return;
     }
     setLoading(true);

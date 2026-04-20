@@ -41,50 +41,32 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
   };
 
   const validateForm = () => {
-    if (!formData.first_name || !formData.last_name) {
-      setError('First name and last name are required');
-      return false;
-    }
+    const fail = (msg) => { setError(msg); return msg; };
 
-    if (!formData.date_of_birth) {
-      setError('Date of birth is required');
-      return false;
-    }
-
-    if (!formData.gender) {
-      setError('Gender is required');
-      return false;
-    }
-
-    if (!formData.phone_number) {
-      setError('Phone number is required');
-      return false;
-    }
+    if (!formData.first_name || !formData.last_name) return fail('First name and last name are required');
+    if (!formData.date_of_birth)                     return fail('Date of birth is required');
+    if (!formData.gender)                            return fail('Gender is required');
+    if (!formData.phone_number)                      return fail('Phone number is required');
 
     const phoneRegex = /^[\+]?[0-9\s\-\(\)]+$/;
-    if (!phoneRegex.test(formData.phone_number)) {
-      setError('Please enter a valid phone number');
-      return false;
-    }
+    if (!phoneRegex.test(formData.phone_number))     return fail('Please enter a valid phone number');
 
     const dob = new Date(formData.date_of_birth);
     const today = new Date();
-    if (dob >= today) {
-      setError('Date of birth must be in the past');
-      return false;
-    }
+    if (dob >= today) return fail('Date of birth must be in the past');
 
     setError(null);
-    return true;
+    return null; // null = no error
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!validateForm()) {
+    const validationError = validateForm();
+    if (validationError) {
       showToast({
         type: 'error',
-        message: error,
+        message: validationError,
         duration: 4000
       });
       return;

@@ -25,7 +25,7 @@ const generateNurseNumber = async () => {
   if (result.rows.length === 0) return 'NRS-101';
   const last = result.rows[0].nurse_number; // e.g. "NRS-103"
   const num = parseInt(last.split('-')[1]) + 1;
-  return `NRS-${num}`;
+  return `NRS-${String(num).padStart(3, '0')}`;
 };
 
 // ============================================

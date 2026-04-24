@@ -1,21 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import './Patients.css'; 
-import { patientsAPI } from '../services/api'; 
+import './Patients.css';
+import { patientsAPI } from '../services/api';
 import { useNotifications } from '../contexts/NotificationContext';
 import PatientFormModal from './PatientForm';
-import PatientDetailsModal from './PatientDetailsModal'; 
+import PatientDetailsModal from './PatientDetailsModal';
 import PatientEditForm from './PatientEditForm';
 import { getActiveAlerts } from './Dashboard';
 
-function Patients({ initialRiskFilter = 'All' }) {
+// ── currentUser received from App.js ──
+function Patients({ initialRiskFilter = 'All', currentUser }) {
   const { showToast } = useNotifications();
-  const [patients, setPatients]     = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [analyzing, setAnalyzing]   = useState(false);
-  const [showModal, setShowModal]   = useState(false);
-  const [riskFilter, setRiskFilter] = useState(initialRiskFilter);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedPatient, setSelectedPatient] = useState(null); 
+  const [patients, setPatients]         = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [analyzing, setAnalyzing]       = useState(false);
+  const [showModal, setShowModal]       = useState(false);
+  const [riskFilter, setRiskFilter]     = useState(initialRiskFilter);
+  const [searchQuery, setSearchQuery]   = useState('');
+  const [selectedPatient, setSelectedPatient] = useState(null);
   const [editingPatient, setEditingPatient]   = useState(null);
   const [activeAlerts, setActiveAlerts]       = useState([]);
 
@@ -26,7 +27,7 @@ function Patients({ initialRiskFilter = 'All' }) {
     try {
       setLoading(true);
       const res = await patientsAPI.getAllPatients();
-      setPatients(res.data || []); 
+      setPatients(res.data || []);
       setLoading(false);
     } catch (err) {
       console.error(err);
@@ -42,14 +43,11 @@ function Patients({ initialRiskFilter = 'All' }) {
     try {
       setAnalyzing(true);
       showToast({ type: 'info', message: '🔮 Running Predictive Analysis...' });
-      
-      const alerts = getActiveAlerts();
+      const alerts        = getActiveAlerts();
       const alertLocations = alerts.map(alert => alert.affectedArea);
-      
-      await patientsAPI.predictRisk(alertLocations); 
-      
+      await patientsAPI.predictRisk(alertLocations);
       showToast({ type: 'success', message: 'Prediction Complete! Updating list...' });
-      await loadPatients(); 
+      await loadPatients();
     } catch (err) {
       showToast({ type: 'error', message: 'Analysis Failed' });
     } finally {
@@ -57,30 +55,26 @@ function Patients({ initialRiskFilter = 'All' }) {
     }
   };
 
-  // Check if a patient is in an alerted area
   const getPatientAlerts = (patient) => {
     if (!activeAlerts.length) return [];
-    // Update to match rural fields
     const locationString = `${patient.district || ''} ${patient.ward || ''} ${patient.village || ''} ${patient.headman || ''}`.toLowerCase();
-    
     return activeAlerts.filter(alert =>
       locationString.includes(alert.affectedArea.toLowerCase()) ||
       alert.affectedArea.toLowerCase().includes(locationString)
     );
   };
 
-  // Get effective risk score (base + weather boost)
   const getEffectiveRisk = (patient) => {
-    const base = parseFloat(patient.risk_score) || 0;
+    const base   = parseFloat(patient.risk_score) || 0;
     const alerts = getPatientAlerts(patient);
-    const boost = alerts.reduce((sum, a) => sum + a.riskBoost, 0);
+    const boost  = alerts.reduce((sum, a) => sum + a.riskBoost, 0);
     const effective = Math.min(base + boost, 100);
-    const label = effective >= 50 ? 'High' : effective >= 25 ? 'Medium' : 'Low';
+    const label  = effective >= 50 ? 'High' : effective >= 25 ? 'Medium' : 'Low';
     return { score: effective, label, boosted: boost > 0, boost };
   };
 
   const getRiskClass = (label) => {
-    switch(label?.toLowerCase()) {
+    switch (label?.toLowerCase()) {
       case 'high':   return 'risk-high';
       case 'medium': return 'risk-medium';
       default:       return 'risk-low';
@@ -90,35 +84,34 @@ function Patients({ initialRiskFilter = 'All' }) {
   const formatDate = (dateStr) => {
     if (!dateStr) return 'Not Set';
     const date = new Date(dateStr);
-    return `${String(date.getDate()).padStart(2,'0')}-${String(date.getMonth()+1).padStart(2,'0')}-${date.getFullYear()}`;
+    return `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}`;
   };
 
   const getPickupStatus = (dateStr) => {
     if (!dateStr) return null;
-    const today = new Date(); today.setHours(0,0,0,0);
-    const pickup = new Date(dateStr); pickup.setHours(0,0,0,0);
+    const today  = new Date(); today.setHours(0, 0, 0, 0);
+    const pickup = new Date(dateStr); pickup.setHours(0, 0, 0, 0);
     const diffDays = Math.ceil((pickup - today) / (1000 * 60 * 60 * 24));
-    if (diffDays < 0) return 'overdue';
+    if (diffDays < 0)  return 'overdue';
     if (diffDays <= 3) return 'soon';
     return 'normal';
   };
 
   const filteredPatients = patients.filter(p => {
-    const effective = getEffectiveRisk(p);
-    const matchesRisk = riskFilter === 'All' || effective.label.toLowerCase() === riskFilter.toLowerCase();
-    const searchLower = searchQuery.toLowerCase();
+    const effective    = getEffectiveRisk(p);
+    const matchesRisk  = riskFilter === 'All' || effective.label.toLowerCase() === riskFilter.toLowerCase();
+    const searchLower  = searchQuery.toLowerCase();
     const matchesSearch =
-      (p.first_name?.toLowerCase() || '').includes(searchLower) ||
-      (p.last_name?.toLowerCase() || '').includes(searchLower) ||
+      (p.first_name?.toLowerCase()     || '').includes(searchLower) ||
+      (p.last_name?.toLowerCase()      || '').includes(searchLower) ||
       (p.patient_number?.toLowerCase() || '').includes(searchLower) ||
-      (p.phone_number?.toLowerCase() || '').includes(searchLower);
+      (p.phone_number?.toLowerCase()   || '').includes(searchLower);
     return matchesRisk && matchesSearch;
   });
 
   return (
     <div className="patients-page">
 
-      {/* Weather Alert Notice on Patients page */}
       {activeAlerts.length > 0 && (
         <div className="patients-weather-notice">
           🌧️ <strong>{activeAlerts.length} weather alert(s) active.</strong> Affected patients show boosted risk scores below.
@@ -155,9 +148,7 @@ function Patients({ initialRiskFilter = 'All' }) {
             {analyzing ? 'Analyzing...' : 'Predict Risks'}
           </button>
 
-          <button className="btn-add-patient" onClick={() => setShowModal(true)}>
-            + New Patient
-          </button>
+          <button className="btn-add-patient" onClick={() => setShowModal(true)}>+ New Patient</button>
         </div>
       </div>
 
@@ -168,32 +159,24 @@ function Patients({ initialRiskFilter = 'All' }) {
               <h3>No patients found</h3>
               <p>{searchQuery ? `No results match "${searchQuery}".` : `No patients matching "${riskFilter}" risk filter.`}</p>
               <button className="btn-show-all" onClick={() => { setRiskFilter('All'); setSearchQuery(''); }}>
-                Clear Filters & Show All
+                Clear Filters &amp; Show All
               </button>
             </div>
           ) : (
             <table className="patients-table">
               <thead>
                 <tr>
-                  <th>ID</th>
-                  <th>Name</th>
-                  <th>Age</th>
-                  <th>Distance</th>
-                  <th>Next Pickup</th>
-                  <th>Predicted Risk</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                  <th>ID</th><th>Name</th><th>Age</th><th>Distance</th>
+                  <th>Next Pickup</th><th>Predicted Risk</th><th>Status</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredPatients.map(p => {
-                  const age = p.date_of_birth
-                    ? new Date().getFullYear() - new Date(p.date_of_birth).getFullYear()
-                    : 'N/A';
-                  const effective      = getEffectiveRisk(p);
-                  const riskClass      = getRiskClass(effective.label);
-                  const pickupStatus   = getPickupStatus(p.next_pickup_date);
-                  const patientAlerts  = getPatientAlerts(p);
+                  const age          = p.date_of_birth ? new Date().getFullYear() - new Date(p.date_of_birth).getFullYear() : 'N/A';
+                  const effective    = getEffectiveRisk(p);
+                  const riskClass    = getRiskClass(effective.label);
+                  const pickupStatus = getPickupStatus(p.next_pickup_date);
+                  const patientAlerts = getPatientAlerts(p);
 
                   return (
                     <tr key={p.patient_id} className={effective.boosted ? 'weather-affected-row' : ''}>
@@ -202,23 +185,20 @@ function Patients({ initialRiskFilter = 'All' }) {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                           {p.first_name} {p.last_name}
                           {effective.boosted && (
-                            <span
-                              className="weather-warning-icon"
-                              title={`Weather alert: ${patientAlerts.map(a => a.label).join(', ')} in ${patientAlerts.map(a => a.affectedArea).join(', ')} (+${effective.boost}% risk)`}
-                            >
+                            <span className="weather-warning-icon"
+                              title={`Weather alert: ${patientAlerts.map(a => a.label).join(', ')} (+${effective.boost}% risk)`}>
                               🌧️
                             </span>
                           )}
                         </div>
                       </td>
                       <td>{age}</td>
-                      {/* ✅ FIX: Removed decimals by rounding the number */}
                       <td>{p.distance_from_clinic ? `${Math.round(Number(p.distance_from_clinic))} km` : 'Unknown'}</td>
                       <td>
                         {p.next_pickup_date ? (
                           <span className={`pickup-badge pickup-${pickupStatus}`}>
                             {pickupStatus === 'overdue' && '⚠️ '}
-                            {pickupStatus === 'soon' && '🔔 '}
+                            {pickupStatus === 'soon'    && '🔔 '}
                             {formatDate(p.next_pickup_date)}
                           </span>
                         ) : (
@@ -230,13 +210,9 @@ function Patients({ initialRiskFilter = 'All' }) {
                           <div className="risk-track">
                             <div className={`risk-fill ${riskClass}`} style={{ width: `${effective.score}%` }} />
                           </div>
-                          <span className={`risk-score-text ${riskClass}`}>
-                            {effective.score}%
-                          </span>
+                          <span className={`risk-score-text ${riskClass}`}>{effective.score}%</span>
                         </div>
-                        {effective.boosted && (
-                          <div className="weather-boost-tag">+{effective.boost}% weather</div>
-                        )}
+                        {effective.boosted && <div className="weather-boost-tag">+{effective.boost}% weather</div>}
                       </td>
                       <td>
                         <span className={`status-badge ${p.is_active ? 'active' : 'inactive'}`}>
@@ -246,7 +222,7 @@ function Patients({ initialRiskFilter = 'All' }) {
                       <td>
                         <div className="action-buttons">
                           <button className="btn-icon view" title="View Details" onClick={() => setSelectedPatient(p)}>👁️</button>
-                          <button className="btn-icon edit" title="Edit Patient" onClick={() => setEditingPatient(p)}>✏️</button>
+                          <button className="btn-icon edit" title="Edit Patient"  onClick={() => setEditingPatient(p)}>✏️</button>
                         </div>
                       </td>
                     </tr>
@@ -258,9 +234,28 @@ function Patients({ initialRiskFilter = 'All' }) {
         </div>
       </div>
 
-      {showModal && <PatientFormModal onClose={() => setShowModal(false)} onSuccess={loadPatients} />}
-      {selectedPatient && <PatientDetailsModal patient={selectedPatient} onClose={() => setSelectedPatient(null)} onEdit={(p) => { setSelectedPatient(null); setEditingPatient(p); }} />}
-      {editingPatient && <PatientEditForm patient={editingPatient} onClose={() => setEditingPatient(null)} onSuccess={() => { setEditingPatient(null); loadPatients(); }} />}
+      {/* ── currentUser forwarded into PatientForm ── */}
+      {showModal && (
+        <PatientFormModal
+          onClose={() => setShowModal(false)}
+          onSuccess={loadPatients}
+          currentUser={currentUser}
+        />
+      )}
+      {selectedPatient && (
+        <PatientDetailsModal
+          patient={selectedPatient}
+          onClose={() => setSelectedPatient(null)}
+          onEdit={(p) => { setSelectedPatient(null); setEditingPatient(p); }}
+        />
+      )}
+      {editingPatient && (
+        <PatientEditForm
+          patient={editingPatient}
+          onClose={() => setEditingPatient(null)}
+          onSuccess={() => { setEditingPatient(null); loadPatients(); }}
+        />
+      )}
     </div>
   );
 }

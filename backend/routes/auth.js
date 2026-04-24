@@ -1,9 +1,4 @@
 // backend/routes/auth.js
-// This file handles user registration and login
-
-// ============================================
-// SECTION 1: IMPORT LIBRARIES
-// ============================================
 
 const express = require('express');
 const bcrypt = require('bcryptjs');
@@ -11,275 +6,214 @@ const jwt = require('jsonwebtoken');
 const { query } = require('../config/db');
 const { verifyToken } = require('../middleware/auth');
 
-// Create a router (mini-app for auth routes)
 const router = express.Router();
 
 // ============================================
-// SECTION 2: REGISTER NEW USER
+// HELPERS: Generate Staff ID and Nurse Number
 // ============================================
 
-// POST /api/auth/register
-// Purpose: Create a new user account
+const generateStaffId = async () => {
+  const result = await query(`SELECT staff_id FROM users WHERE staff_id IS NOT NULL ORDER BY staff_id DESC LIMIT 1`);
+  if (result.rows.length === 0) return 'STF-1001';
+  const last = result.rows[0].staff_id; // e.g. "STF-1004"
+  const num = parseInt(last.split('-')[1]) + 1;
+  return `STF-${num}`;
+};
+
+const generateNurseNumber = async () => {
+  const result = await query(`SELECT nurse_number FROM users WHERE nurse_number IS NOT NULL ORDER BY nurse_number DESC LIMIT 1`);
+  if (result.rows.length === 0) return 'NRS-101';
+  const last = result.rows[0].nurse_number; // e.g. "NRS-103"
+  const num = parseInt(last.split('-')[1]) + 1;
+  return `NRS-${num}`;
+};
+
+// ============================================
+// REGISTER NEW USER
+// ============================================
+
 router.post('/register', async (req, res) => {
-    try {
-        // STEP 1: Get data from request body
-        const { username, email, password, full_name, role, phone_number } = req.body;
-        
-        console.log('📝 Registration attempt:', { username, email, role });
-        
-        // STEP 2: Validate required fields
-        if (!username || !email || !password || !full_name || !role) {
-            return res.status(400).json({
-                success: false,
-                message: 'Please provide all required fields: username, email, password, full_name, role'
-            });
-        }
-        
-        // STEP 3: Validate email format
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Please provide a valid email address'
-            });
-        }
-        
-        // STEP 4: Validate role
-        const validRoles = ['admin', 'healthcare_worker', 'data_entry'];
-        if (!validRoles.includes(role)) {
-            return res.status(400).json({
-                success: false,
-                message: `Role must be one of: ${validRoles.join(', ')}`
-            });
-        }
-        
-        // STEP 5: Check if username already exists
-        const usernameCheck = await query(
-            'SELECT user_id FROM users WHERE username = $1',
-            [username]
-        );
-        
-        if (usernameCheck.rows.length > 0) {
-            return res.status(409).json({
-                success: false,
-                message: 'Username already exists. Please choose another.'
-            });
-        }
-        
-        // STEP 6: Check if email already exists
-        const emailCheck = await query(
-            'SELECT user_id FROM users WHERE email = $1',
-            [email]
-        );
-        
-        if (emailCheck.rows.length > 0) {
-            return res.status(409).json({
-                success: false,
-                message: 'Email already registered. Please use another or login.'
-            });
-        }
-        
-        // STEP 7: Hash the password
-        const salt = await bcrypt.genSalt(10);
-        const password_hash = await bcrypt.hash(password, salt);
-        
-        console.log('🔐 Password hashed successfully');
-        
-        // STEP 8: Insert user into database
-        const result = await query(
-            `INSERT INTO users (username, email, password_hash, full_name, role, phone_number, is_active)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-             RETURNING user_id, username, email, full_name, role, phone_number, created_at`,
-            [username, email, password_hash, full_name, role, phone_number || null, true]
-        );
-        
-        const newUser = result.rows[0];
-        
-        console.log('✅ User created successfully:', newUser.user_id);
-        
-        // STEP 9: Send success response
-        res.status(201).json({
-            success: true,
-            message: 'User registered successfully',
-            user: {
-                user_id: newUser.user_id,
-                username: newUser.username,
-                email: newUser.email,
-                full_name: newUser.full_name,
-                role: newUser.role,
-                phone_number: newUser.phone_number,
-                created_at: newUser.created_at
-            }
-        });
-        
-    } catch (error) {
-        console.error('❌ Registration error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error registering user',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+  try {
+    const { username, email, password, full_name, role, phone_number } = req.body;
+
+    console.log('📝 Registration attempt:', { username, email, role });
+
+    if (!username || !email || !password || !full_name || !role) {
+      return res.status(400).json({ success: false, message: 'Please provide all required fields: username, email, password, full_name, role' });
     }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ success: false, message: 'Please provide a valid email address' });
+    }
+
+    const validRoles = ['admin', 'healthcare_worker', 'data_entry'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ success: false, message: `Role must be one of: ${validRoles.join(', ')}` });
+    }
+
+    const usernameCheck = await query('SELECT user_id FROM users WHERE username = $1', [username]);
+    if (usernameCheck.rows.length > 0) {
+      return res.status(409).json({ success: false, message: 'Username already exists. Please choose another.' });
+    }
+
+    const emailCheck = await query('SELECT user_id FROM users WHERE email = $1', [email]);
+    if (emailCheck.rows.length > 0) {
+      return res.status(409).json({ success: false, message: 'Email already registered. Please use another or login.' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const password_hash = await bcrypt.hash(password, salt);
+
+    // ── Auto-generate staff_id for everyone, nurse_number only for nurses ──
+    const staff_id = await generateStaffId();
+    const nurse_number = role === 'healthcare_worker' ? await generateNurseNumber() : null;
+
+    console.log(`🪪 Generated Staff ID: ${staff_id}${nurse_number ? ` | Nurse No: ${nurse_number}` : ''}`);
+
+    const result = await query(
+      `INSERT INTO users (username, email, password_hash, full_name, role, phone_number, is_active, staff_id, nurse_number)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING user_id, username, email, full_name, role, phone_number, staff_id, nurse_number, created_at`,
+      [username, email, password_hash, full_name, role, phone_number || null, true, staff_id, nurse_number]
+    );
+
+    const newUser = result.rows[0];
+    console.log('✅ User created:', newUser.user_id, '| Staff ID:', staff_id);
+
+    res.status(201).json({
+      success: true,
+      message: 'User registered successfully',
+      user: {
+        user_id: newUser.user_id,
+        username: newUser.username,
+        email: newUser.email,
+        full_name: newUser.full_name,
+        role: newUser.role,
+        phone_number: newUser.phone_number,
+        staff_id: newUser.staff_id,
+        nurse_number: newUser.nurse_number,
+        created_at: newUser.created_at
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Registration error:', error);
+    res.status(500).json({ success: false, message: 'Error registering user', error: process.env.NODE_ENV === 'development' ? error.message : undefined });
+  }
 });
 
 // ============================================
-// SECTION 3: LOGIN USER
+// LOGIN USER
 // ============================================
 
-// POST /api/auth/login
-// Purpose: Login and get JWT token
 router.post('/login', async (req, res) => {
-    try {
-        // STEP 1: Get credentials from request
-        const { email, password } = req.body;
-        
-        console.log('🔑 Login attempt:', email);
-        
-        // STEP 2: Validate input
-        if (!email || !password) {
-            return res.status(400).json({
-                success: false,
-                message: 'Please provide email and password'
-            });
-        }
-        
-        // STEP 3: Find user in database
-        const result = await query(
-            `SELECT user_id, username, email, password_hash, full_name, role, 
-                    phone_number, is_active, created_at
-             FROM users 
-             WHERE email = $1`,
-            [email]
-        );
-        
-        // STEP 4: Check if user exists
-        if (result.rows.length === 0) {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid email or password'
-            });
-        }
-        
-        const user = result.rows[0];
-        
-        // STEP 5: Check if account is active
-        if (!user.is_active) {
-            return res.status(403).json({
-                success: false,
-                message: 'Account is deactivated. Please contact administrator.'
-            });
-        }
-        
-        // STEP 6: Compare password with hash
-        const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-        
-        if (!isPasswordValid) {
-            console.log('❌ Invalid password for:', email);
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid email or password'
-            });
-        }
-        
-        console.log('✅ Password verified for:', email);
-        
-        // STEP 7: Create JWT token
-        const payload = {
-            user_id: user.user_id,
-            username: user.username,
-            email: user.email,
-            role: user.role
-        };
-        
-        const token = jwt.sign(
-            payload,
-            process.env.JWT_SECRET,
-            { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
-        );
-        
-        console.log('🎟️ JWT token generated for:', email);
-        
-        // STEP 8: Send success response with token
-        res.json({
-            success: true,
-            message: 'Login successful',
-            token: token,
-            user: {
-                user_id: user.user_id,
-                username: user.username,
-                email: user.email,
-                full_name: user.full_name,
-                role: user.role,
-                phone_number: user.phone_number,
-                created_at: user.created_at
-            }
-        });
-        
-    } catch (error) {
-        console.error('❌ Login error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error during login',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+  try {
+    const { email, password } = req.body;
+    console.log('🔑 Login attempt:', email);
+
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: 'Please provide email and password' });
     }
+
+    const result = await query(
+      `SELECT user_id, username, email, password_hash, full_name, role,
+              phone_number, is_active, staff_id, nurse_number, created_at
+       FROM users WHERE email = $1`,
+      [email]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+    }
+
+    const user = result.rows[0];
+
+    if (!user.is_active) {
+      return res.status(403).json({ success: false, message: 'Account is deactivated. Please contact administrator.' });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+    if (!isPasswordValid) {
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+    }
+
+    // ── JWT includes nurse_number so backend routes can use it too ──
+    const payload = {
+      user_id: user.user_id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      staff_id: user.staff_id,
+      nurse_number: user.nurse_number || null
+    };
+
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '24h' });
+
+    console.log('🎟️ JWT generated for:', email, '| Role:', user.role);
+
+    res.json({
+      success: true,
+      message: 'Login successful',
+      token,
+      user: {
+        user_id: user.user_id,
+        username: user.username,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role,
+        phone_number: user.phone_number,
+        staff_id: user.staff_id,
+        nurse_number: user.nurse_number || null,
+        created_at: user.created_at
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Login error:', error);
+    res.status(500).json({ success: false, message: 'Error during login', error: process.env.NODE_ENV === 'development' ? error.message : undefined });
+  }
 });
 
 // ============================================
-// SECTION 4: GET CURRENT USER (PROTECTED)
+// GET CURRENT USER (PROTECTED)
 // ============================================
 
-// GET /api/auth/me
-// Purpose: Get current user profile (requires authentication)
 router.get('/me', verifyToken, async (req, res) => {
-    try {
-        console.log('👤 Fetching profile for user:', req.user.user_id);
-        
-        // Get user from database
-        const result = await query(
-            `SELECT user_id, username, email, full_name, role, 
-                    phone_number, is_active, created_at
-             FROM users 
-             WHERE user_id = $1`,
-            [req.user.user_id]
-        );
-        
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-        
-        const user = result.rows[0];
-        
-        res.json({
-            success: true,
-            message: 'User profile retrieved successfully',
-            user: {
-                user_id: user.user_id,
-                username: user.username,
-                email: user.email,
-                full_name: user.full_name,
-                role: user.role,
-                phone_number: user.phone_number,
-                is_active: user.is_active,
-                created_at: user.created_at
-            }
-        });
-        
-    } catch (error) {
-        console.error('❌ Error fetching user profile:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching user profile',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-});
+  try {
+    const result = await query(
+      `SELECT user_id, username, email, full_name, role,
+              phone_number, is_active, staff_id, nurse_number, created_at
+       FROM users WHERE user_id = $1`,
+      [req.user.user_id]
+    );
 
-// ============================================
-// SECTION 5: EXPORT ROUTER
-// ============================================
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const user = result.rows[0];
+
+    res.json({
+      success: true,
+      user: {
+        user_id: user.user_id,
+        username: user.username,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role,
+        phone_number: user.phone_number,
+        is_active: user.is_active,
+        staff_id: user.staff_id,
+        nurse_number: user.nurse_number || null,
+        created_at: user.created_at
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching user profile:', error);
+    res.status(500).json({ success: false, message: 'Error fetching user profile' });
+  }
+});
 
 module.exports = router;

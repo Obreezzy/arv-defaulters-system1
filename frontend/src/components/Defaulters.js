@@ -4,20 +4,19 @@ import { defaultersAPI } from '../services/api';
 import { useNotifications } from '../contexts/NotificationContext';
 import PickupForm from './PickupForm';
 
-function Defaulters() {
+// ── currentUser received from App.js ──
+function Defaulters({ currentUser }) {
   const { showToast } = useNotifications();
-  const [defaulters, setDefaulters] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [defaulters, setDefaulters]     = useState([]);
+  const [loading, setLoading]           = useState(true);
   const [pickupPatient, setPickupPatient] = useState(null);
 
-  useEffect(() => {
-    loadDefaulters();
-  }, []);
+  useEffect(() => { loadDefaulters(); }, []);
 
   const loadDefaulters = async () => {
     try {
       setLoading(true);
-      const res = await defaultersAPI.getAllDefaulters();
+      const res  = await defaultersAPI.getAllDefaulters();
       const data = res.defaulters || res.data || [];
       setDefaulters(data);
     } catch (err) {
@@ -29,11 +28,11 @@ function Defaulters() {
   };
 
   const getRiskClass = (level) => {
-    switch(level?.toLowerCase()) {
-      case 'high': return 'risk-high';
+    switch (level?.toLowerCase()) {
+      case 'high':   return 'risk-high';
       case 'medium': return 'risk-medium';
-      case 'low': return 'risk-low';
-      default: return 'risk-default';
+      case 'low':    return 'risk-low';
+      default:       return 'risk-default';
     }
   };
 
@@ -51,11 +50,7 @@ function Defaulters() {
             )}
           </p>
         </div>
-        <button
-          className="btn-scan"
-          onClick={loadDefaulters}
-          disabled={loading}
-        >
+        <button className="btn-scan" onClick={loadDefaulters} disabled={loading}>
           <span className="icon">{loading ? '⏳' : '🔄'}</span>
           {loading ? 'Loading...' : 'Refresh'}
         </button>
@@ -93,9 +88,7 @@ function Defaulters() {
                       <div className="sub-text">{d.patient_number}</div>
                     </td>
                     <td>{d.phone_number || 'N/A'}</td>
-                    <td>
-                      <span className="overdue-days">{d.days_overdue} days</span>
-                    </td>
+                    <td><span className="overdue-days">{d.days_overdue} days</span></td>
                     <td>
                       <span className={`risk-badge ${getRiskClass(d.risk_level)}`}>
                         {d.risk_level?.toUpperCase() || 'UNKNOWN'}
@@ -105,11 +98,11 @@ function Defaulters() {
                       <button
                         className="btn-record-pickup"
                         onClick={() => setPickupPatient({
-                          patient_id: d.patient_id,
-                          first_name: d.first_name,
-                          last_name: d.last_name,
-                          patient_number: d.patient_number,
-                          phone_number: d.phone_number,
+                          patient_id:      d.patient_id,
+                          first_name:      d.first_name,
+                          last_name:       d.last_name,
+                          patient_number:  d.patient_number,
+                          phone_number:    d.phone_number,
                           pickup_frequency: d.pickup_frequency || 30
                         })}
                       >
@@ -128,6 +121,7 @@ function Defaulters() {
         <PickupForm
           isOpen={true}
           preselectedPatient={pickupPatient}
+          currentUser={currentUser}
           onClose={() => setPickupPatient(null)}
           onSuccess={() => {
             setPickupPatient(null);

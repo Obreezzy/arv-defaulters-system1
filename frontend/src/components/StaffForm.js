@@ -6,13 +6,15 @@ function StaffForm({ onClose, onSuccess }) {
   const { showToast } = useNotifications();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    full_name: '',
-    username: '',
-    email: '',
+    full_name:    '',
+    username:     '',
+    email:        '',
     phone_number: '',
-    role: 'healthcare_worker',
-    password: ''
+    role:         'healthcare_worker',
+    password:     ''
   });
+
+  const isNurseRole = formData.role === 'healthcare_worker';
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -21,7 +23,6 @@ function StaffForm({ onClose, onSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-
     try {
       await authAPI.register(formData);
       showToast({ type: 'success', message: 'Staff member added successfully!' });
@@ -64,7 +65,7 @@ function StaffForm({ onClose, onSuccess }) {
             <div className="form-group">
               <label>System Role</label>
               <select name="role" required value={formData.role} onChange={handleChange}>
-                <option value="healthcare_worker">Healthcare Worker</option>
+                <option value="healthcare_worker">Healthcare Worker (Nurse)</option>
                 <option value="data_entry">Data Entry</option>
                 <option value="admin">Administrator</option>
               </select>
@@ -73,6 +74,29 @@ function StaffForm({ onClose, onSuccess }) {
               <label>Temporary Password</label>
               <input type="password" name="password" required value={formData.password} onChange={handleChange} minLength="6" />
             </div>
+          </div>
+
+          {/* ── Auto-generation notice ── */}
+          <div style={{
+            marginTop: '1rem',
+            padding: '0.75rem 1rem',
+            borderRadius: '8px',
+            backgroundColor: isNurseRole ? '#f0fdf4' : '#f8fafc',
+            border: `1px solid ${isNurseRole ? '#bbf7d0' : '#e2e8f0'}`,
+            fontSize: '0.85rem',
+            color: isNurseRole ? '#166534' : '#64748b'
+          }}>
+            {isNurseRole ? (
+              <>
+                <strong>🪪 Staff ID</strong> and <strong>💉 Nurse Number</strong> will be automatically generated
+                and linked to this account. The nurse number will auto-fill when they record pickups or register patients.
+              </>
+            ) : (
+              <>
+                <strong>🪪 Staff ID</strong> will be automatically generated for this account.
+                {formData.role === 'admin' ? ' Admins do not have a nurse number.' : ' Data entry staff do not have a nurse number.'}
+              </>
+            )}
           </div>
 
           <div className="modal-footer">

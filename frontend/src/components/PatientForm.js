@@ -3,54 +3,56 @@ import './PatientForm.css';
 import { patientsAPI } from '../services/api';
 import { useNotifications } from '../contexts/NotificationContext';
 
-function PatientForm({ onClose, onSuccess }) {
+function PatientForm({ onClose, onSuccess, currentUser = null }) {
   const { showToast, addNotification } = useNotifications();
 
+  const isNurse      = currentUser?.role === 'healthcare_worker';
+  const autoNurseNum = currentUser?.nurse_number || '';
+
   const [formData, setFormData] = useState({
-    patient_number: '',
-    first_name: '',
-    last_name: '',
-    date_of_birth: '',
-    gender: '',
-    enrollment_date: '',
-    phone_number: '',
+    patient_number:    '',
+    first_name:        '',
+    last_name:         '',
+    date_of_birth:     '',
+    gender:            '',
+    enrollment_date:   '',
+    phone_number:      '',
     alternative_phone: '',
-    email: '',
-    district: '',
-    ward: '',
-    village: '',
-    headman: '',
+    email:             '',
+    district:          '',
+    ward:              '',
+    village:           '',
+    headman:           '',
     distance_from_clinic: '',
-    arv_regimen: '',
-    pickup_frequency: '30',
-    next_pickup_date: '',
-    next_of_kin_name: '',
+    arv_regimen:       '',
+    pickup_frequency:  '30',
+    next_pickup_date:  '',
+    next_of_kin_name:  '',
     next_of_kin_relationship: '',
     next_of_kin_phone: '',
     next_of_kin_address: '',
-    has_hypertension: false,
-    has_diabetes: false,
-    has_tuberculosis: false,
+    has_hypertension:  false,
+    has_diabetes:      false,
+    has_tuberculosis:  false,
     has_mental_health: false,
     has_kidney_disease: false,
     other_chronic_condition: '',
-    risk_notes: '',
-    // ✅ NEW CLINIC FIELDS ADDED HERE
-    clinic_number: '',
-    nurse_number: '',
+    risk_notes:        '',
+    clinic_number:     '',
+    nurse_number:      autoNurseNum,   // pre-fill if nurse
     dispensing_clinic: ''
   });
 
   const [isNewPatient, setIsNewPatient] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState(null);
-  const [success, setSuccess] = useState(false);
+  const [loading, setLoading]           = useState(false);
+  const [error, setError]               = useState(null);
+  const [success, setSuccess]           = useState(false);
 
   useState(() => {
     const patientNumber = 'P' + Date.now().toString().slice(-8);
     setFormData(prev => ({
       ...prev,
-      patient_number: patientNumber,
+      patient_number:  patientNumber,
       enrollment_date: new Date().toISOString().split('T')[0]
     }));
   }, []);
@@ -63,22 +65,18 @@ function PatientForm({ onClose, onSuccess }) {
       return;
     }
 
-    // Letters only (allow spaces, hyphens, apostrophes for names/places)
-    const lettersOnly    = /^[a-zA-Z\s\-'.]*$/;
-    // Whole numbers only
+    const lettersOnly     = /^[a-zA-Z\s\-'.]*$/;
     const wholeNumberOnly = /^\d*$/;
-    // Phone: digits, +, spaces, hyphens, parentheses
-    const phoneChars     = /^[\+\d\s\-\(\)]*$/;
+    const phoneChars      = /^[\+\d\s\-\(\)]*$/;
 
     const letterFields   = ['first_name', 'last_name', 'district', 'village', 'headman', 'next_of_kin_name'];
     const wholeNumFields = ['ward', 'distance_from_clinic'];
     const phoneFields    = ['phone_number', 'alternative_phone', 'next_of_kin_phone'];
 
-    if (letterFields.includes(name)   && !lettersOnly.test(value))    return;
+    if (letterFields.includes(name)   && !lettersOnly.test(value))     return;
     if (wholeNumFields.includes(name) && !wholeNumberOnly.test(value)) return;
     if (phoneFields.includes(name)    && !phoneChars.test(value))      return;
 
-    // Block invalid DOB years as-you-type
     if (name === 'date_of_birth' && value) {
       const year = new Date(value).getFullYear();
       if (year < 1946 || year > 2018) return;
@@ -87,9 +85,8 @@ function PatientForm({ onClose, onSuccess }) {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-
   const handleDobBlur = (e) => {
-    const value = e.target.value; // format: YYYY-MM-DD
+    const value = e.target.value;
     if (!value) return;
     const year = parseInt(value.split('-')[0], 10);
     if (year < 1946 || year > 2018) {
@@ -97,19 +94,18 @@ function PatientForm({ onClose, onSuccess }) {
       setError('Date of birth must be between 1946 and 2018');
     }
   };
+
   const calculateLiveRisk = () => {
-    let score = 0;
+    let score    = 0;
     const distance = parseFloat(formData.distance_from_clinic) || 0;
-    const age = formData.date_of_birth
+    const age      = formData.date_of_birth
       ? new Date().getFullYear() - new Date(formData.date_of_birth).getFullYear()
       : 0;
 
     if (distance > 25)      score += 30;
     else if (distance > 15) score += 15;
-
     if (age >= 18 && age <= 24) score += 20;
     else if (age > 70)          score += 10;
-
     if (formData.has_hypertension)   score += 10;
     if (formData.has_diabetes)       score += 10;
     if (formData.has_tuberculosis)   score += 15;
@@ -133,9 +129,9 @@ function PatientForm({ onClose, onSuccess }) {
   const validateForm = () => {
     const fail = (msg) => { setError(msg); return msg; };
 
-    const lettersOnly    = /^[a-zA-Z\s\-'.]+$/;
+    const lettersOnly     = /^[a-zA-Z\s\-'.]+$/;
     const wholeNumberOnly = /^\d+$/;
-    const phoneRegex     = /^[\+]?[0-9\s\-\(\)]+$/;
+    const phoneRegex      = /^[\+]?[0-9\s\-\(\)]+$/;
 
     if (!formData.patient_number)                    return fail('Patient number is required');
     if (!formData.first_name || !formData.last_name) return fail('First and last name are required');
@@ -168,14 +164,14 @@ function PatientForm({ onClose, onSuccess }) {
       if (!emailRegex.test(formData.email)) return fail('Please enter a valid email address');
     }
     if (new Date(formData.date_of_birth) >= new Date()) return fail('Date of birth must be in the past');
-    if (new Date(formData.date_of_birth) < new Date('1946-01-01')) return fail('Date of birth cannot be before 1946 — please check the year entered');
+    if (new Date(formData.date_of_birth) < new Date('1946-01-01')) return fail('Date of birth cannot be before 1946');
 
-    if (!formData.next_of_kin_name)         return fail('Next of Kin name is required');
-    if (!lettersOnly.test(formData.next_of_kin_name)) return fail('Next of Kin name must contain letters only');
-    if (!formData.next_of_kin_relationship) return fail('Next of Kin relationship is required');
-    if (!formData.next_of_kin_phone)        return fail('Next of Kin phone number is required');
-    if (!phoneRegex.test(formData.next_of_kin_phone)) return fail('Next of Kin phone must contain numbers only');
-    if (isNewPatient && !formData.next_pickup_date) return fail('Please enter the first pickup date for this new patient');
+    if (!formData.next_of_kin_name)                           return fail('Next of Kin name is required');
+    if (!lettersOnly.test(formData.next_of_kin_name))         return fail('Next of Kin name must contain letters only');
+    if (!formData.next_of_kin_relationship)                   return fail('Next of Kin relationship is required');
+    if (!formData.next_of_kin_phone)                          return fail('Next of Kin phone number is required');
+    if (!phoneRegex.test(formData.next_of_kin_phone))         return fail('Next of Kin phone must contain numbers only');
+    if (isNewPatient && !formData.next_pickup_date)           return fail('Please enter the first pickup date for this new patient');
 
     setError(null);
     return null;
@@ -194,8 +190,8 @@ function PatientForm({ onClose, onSuccess }) {
     try {
       const payload = {
         ...formData,
-        is_new_patient: isNewPatient,
-        emergency_contact_name: formData.next_of_kin_name,
+        is_new_patient:          isNewPatient,
+        emergency_contact_name:  formData.next_of_kin_name,
         emergency_contact_phone: formData.next_of_kin_phone,
       };
 
@@ -253,9 +249,7 @@ function PatientForm({ onClose, onSuccess }) {
           <button className="close-button" onClick={onClose}>✕</button>
         </div>
 
-        {error && (
-          <div className="form-error"><span>⚠️</span> {error}</div>
-        )}
+        {error && <div className="form-error"><span>⚠️</span> {error}</div>}
 
         <form onSubmit={handleSubmit} className="patient-form">
 
@@ -324,9 +318,6 @@ function PatientForm({ onClose, onSuccess }) {
               <label>Email Address (Optional)</label>
               <input type="email" name="email" value={formData.email}
                 onChange={handleChange} placeholder="patient@example.com" />
-              <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>
-                Used for appointment reminders and notifications
-              </small>
             </div>
           </div>
 
@@ -364,7 +355,7 @@ function PatientForm({ onClose, onSuccess }) {
             </div>
           </div>
 
-          {/* ── Next of Kin (Mandatory) ── */}
+          {/* ── Next of Kin ── */}
           <div className="form-section">
             <h3 className="section-title">Next of Kin Details <span className="required">*</span></h3>
             <p style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '1rem' }}>
@@ -419,7 +410,6 @@ function PatientForm({ onClose, onSuccess }) {
               </select>
             </div>
 
-            {/* Chronic Conditions */}
             <div className="form-group" style={{ marginTop: '1rem' }}>
               <label style={{ marginBottom: '0.75rem', display: 'block', fontWeight: 600 }}>
                 Chronic Conditions (tick all that apply)
@@ -445,20 +435,18 @@ function PatientForm({ onClose, onSuccess }) {
               </div>
             </div>
 
-            {/* ── Live AI Risk Score Bar ── */}
+            {/* AI Risk Score Preview */}
             <div className="risk-preview-bar">
               <div className="risk-preview-header">
                 <span className="risk-preview-title">🔮 AI Risk Score Preview</span>
-                <span className="risk-preview-badge" style={{ backgroundColor: risk.color }}>
-                  {risk.label} Risk
-                </span>
+                <span className="risk-preview-badge" style={{ backgroundColor: risk.color }}>{risk.label} Risk</span>
               </div>
               <div className="risk-preview-track">
                 <div className="risk-preview-fill" style={{ width: `${risk.score}%`, backgroundColor: risk.color }} />
               </div>
               <div className="risk-preview-footer">
                 <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>
-                  Based on distance, age & chronic conditions. Pickup history adds more weight after registration.
+                  Based on distance, age &amp; chronic conditions. Pickup history adds more weight after registration.
                 </span>
                 <span className="risk-preview-score" style={{ color: risk.color }}>{risk.score}%</span>
               </div>
@@ -483,13 +471,39 @@ function PatientForm({ onClose, onSuccess }) {
                   Patient can use this at any clinic
                 </small>
               </div>
+
               <div className="form-group">
                 <label>Nurse Number <span className="required">*</span></label>
-                <input type="text" name="nurse_number" value={formData.nurse_number}
-                  onChange={handleChange} placeholder="e.g. NRS-045" required />
-                <small style={{ color: '#6b7280', fontSize: '0.75rem', marginTop: '0.25rem', display: 'block' }}>
-                  Nurse registering the patient
-                </small>
+                {isNurse ? (
+                  // ── NURSE: locked field, auto-filled ──
+                  <>
+                    <input
+                      type="text"
+                      name="nurse_number"
+                      value={formData.nurse_number}
+                      readOnly
+                      style={{
+                        backgroundColor: '#f0fdf4',
+                        color: '#166534',
+                        fontWeight: '600',
+                        border: '2px solid #bbf7d0',
+                        cursor: 'not-allowed'
+                      }}
+                    />
+                    <small style={{ color: '#166534', fontSize: '0.75rem', marginTop: '0.25rem', display: 'block' }}>
+                      ✅ Auto-filled from your account ({currentUser.full_name})
+                    </small>
+                  </>
+                ) : (
+                  // ── ADMIN / DATA ENTRY: manual entry ──
+                  <>
+                    <input type="text" name="nurse_number" value={formData.nurse_number}
+                      onChange={handleChange} placeholder="e.g. NRS-045" required />
+                    <small style={{ color: '#6b7280', fontSize: '0.75rem', marginTop: '0.25rem', display: 'block' }}>
+                      Enter the registering nurse's number
+                    </small>
+                  </>
+                )}
               </div>
             </div>
             <div className="form-group">
@@ -506,14 +520,10 @@ function PatientForm({ onClose, onSuccess }) {
           <div className="form-section">
             <h3 className="section-title">📅 Medication Pickup Schedule</h3>
             <div className="patient-type-toggle">
-              <button type="button"
-                className={`toggle-btn ${isNewPatient ? 'active' : ''}`}
-                onClick={() => setIsNewPatient(true)}>
+              <button type="button" className={`toggle-btn ${isNewPatient ? 'active' : ''}`} onClick={() => setIsNewPatient(true)}>
                 🆕 First-Time Patient
               </button>
-              <button type="button"
-                className={`toggle-btn ${!isNewPatient ? 'active' : ''}`}
-                onClick={() => setIsNewPatient(false)}>
+              <button type="button" className={`toggle-btn ${!isNewPatient ? 'active' : ''}`} onClick={() => setIsNewPatient(false)}>
                 🔄 Returning / Transfer Patient
               </button>
             </div>
@@ -561,9 +571,7 @@ function PatientForm({ onClose, onSuccess }) {
 
           {/* ── Form Actions ── */}
           <div className="form-actions">
-            <button type="button" className="cancel-button" onClick={onClose} disabled={loading}>
-              Cancel
-            </button>
+            <button type="button" className="cancel-button" onClick={onClose} disabled={loading}>Cancel</button>
             <button type="submit" className="submit-button" disabled={loading}>
               {loading ? (<><span className="spinner-small"></span>Registering...</>) : 'Register Patient'}
             </button>

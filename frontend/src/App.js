@@ -10,21 +10,20 @@ import { NotificationProvider } from './contexts/NotificationContext';
 import NotificationDropdown from './components/NotificationDropdown';
 import Toast from './components/Toast';
 import { useAutoNotifications } from './hooks/useAutoNotifications';
-import { authAPI } from './services/api'; 
+import { authAPI } from './services/api';
 
 function AppContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authLoading, setAuthLoading] = useState(true); 
-  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading]         = useState(true);
+  const [user, setUser]                       = useState(null);
+  const [activeTab, setActiveTab]             = useState('dashboard');
+  const [patientFilter, setPatientFilter]     = useState('All');
 
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [patientFilter, setPatientFilter] = useState('All'); 
-  
   useAutoNotifications();
 
   useEffect(() => {
     const checkAuthStatus = async () => {
-      const token = sessionStorage.getItem('token'); // 👈 changed
+      const token = sessionStorage.getItem('token');
       if (token) {
         try {
           const response = await authAPI.getCurrentUser();
@@ -33,13 +32,12 @@ function AppContent() {
             setIsAuthenticated(true);
           }
         } catch (error) {
-          console.error("Session expired or invalid token.");
-          sessionStorage.removeItem('token'); // 👈 changed
+          console.error('Session expired or invalid token.');
+          sessionStorage.removeItem('token');
         }
       }
-      setAuthLoading(false); 
+      setAuthLoading(false);
     };
-
     checkAuthStatus();
   }, []);
 
@@ -54,20 +52,21 @@ function AppContent() {
   };
 
   const handleLogout = () => {
-    sessionStorage.removeItem('token'); // 👈 changed
+    sessionStorage.removeItem('token');
     setIsAuthenticated(false);
     setUser(null);
-    setActiveTab('dashboard'); 
+    setActiveTab('dashboard');
   };
 
+  // ── Pass currentUser to every component that needs nurse/staff context ──
   const renderContent = () => {
-    switch(activeTab) {
-      case 'dashboard': return <Dashboard onNavigate={handleNavigate} />; 
-      case 'defaulters': return <Defaulters />;
-      case 'patients': return <Patients initialRiskFilter={patientFilter} />; 
-      case 'reports': return <Reports />;
-      case 'staff': return <Staff />;
-      default: return <Dashboard onNavigate={handleNavigate} />;
+    switch (activeTab) {
+      case 'dashboard': return <Dashboard onNavigate={handleNavigate} currentUser={user} />;
+      case 'defaulters': return <Defaulters currentUser={user} />;
+      case 'patients':   return <Patients initialRiskFilter={patientFilter} currentUser={user} />;
+      case 'reports':    return <Reports />;
+      case 'staff':      return <Staff />;
+      default:           return <Dashboard onNavigate={handleNavigate} currentUser={user} />;
     }
   };
 
@@ -95,16 +94,26 @@ function AppContent() {
               <p>Smart Healthcare Solution</p>
             </div>
           </div>
-          
+
           <div className="user-section">
             <NotificationDropdown />
-            
+
+            {/* Show staff ID badge in header */}
+            {user?.staff_id && (
+              <span style={{
+                fontSize: '0.7rem', color: '#6b7280', background: '#f3f4f6',
+                padding: '2px 8px', borderRadius: '999px', fontFamily: 'monospace'
+              }}>
+                {user.staff_id}
+              </span>
+            )}
+
             <div className="user-avatar">
               {user?.full_name?.charAt(0) || user?.username?.charAt(0) || 'H'}
             </div>
-            
+
             <span className="user-name">{user?.full_name || user?.username || 'Healthcare Worker'}</span>
-            
+
             <button className="btn-logout" onClick={handleLogout}>Logout</button>
           </div>
         </div>
@@ -112,42 +121,22 @@ function AppContent() {
 
       <nav className="navigation">
         <div className="nav-content">
-          <button 
-            className={activeTab === 'dashboard' ? 'nav-button active' : 'nav-button'}
-            onClick={() => handleNavigate('dashboard')}
-          >
+          <button className={activeTab === 'dashboard' ? 'nav-button active' : 'nav-button'} onClick={() => handleNavigate('dashboard')}>
             Dashboard
           </button>
-          
-          <button 
-            className={activeTab === 'defaulters' ? 'nav-button active' : 'nav-button'}
-            onClick={() => handleNavigate('defaulters')}
-          >
+          <button className={activeTab === 'defaulters' ? 'nav-button active' : 'nav-button'} onClick={() => handleNavigate('defaulters')}>
             Defaulters
           </button>
-          
-          <button 
-            className={activeTab === 'patients' ? 'nav-button active' : 'nav-button'}
-            onClick={() => handleNavigate('patients', 'All')}
-          >
+          <button className={activeTab === 'patients' ? 'nav-button active' : 'nav-button'} onClick={() => handleNavigate('patients', 'All')}>
             Patients
           </button>
-          
-          <button 
-            className={activeTab === 'reports' ? 'nav-button active' : 'nav-button'}
-            onClick={() => handleNavigate('reports')}
-          >
+          <button className={activeTab === 'reports' ? 'nav-button active' : 'nav-button'} onClick={() => handleNavigate('reports')}>
             Reports
           </button>
-
-          {/* 🛡️ ADMIN ONLY TAB */}
           {user?.role === 'admin' && (
-              <button 
-                  className={activeTab === 'staff' ? 'nav-button active' : 'nav-button'}
-                  onClick={() => handleNavigate('staff')}
-              >
-                  Staff Management
-              </button>
+            <button className={activeTab === 'staff' ? 'nav-button active' : 'nav-button'} onClick={() => handleNavigate('staff')}>
+              Staff Management
+            </button>
           )}
         </div>
       </nav>

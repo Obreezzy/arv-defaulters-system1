@@ -6,8 +6,8 @@ import StaffForm from './StaffForm';
 
 function Staff() {
   const { showToast } = useNotifications();
-  const [users, setUsers]       = useState([]);
-  const [loading, setLoading]   = useState(true);
+  const [users, setUsers]         = useState([]);
+  const [loading, setLoading]     = useState(true);
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => { loadUsers(); }, []);
@@ -26,7 +26,10 @@ function Staff() {
   };
 
   const handleToggleStatus = async (user) => {
-    if (!window.confirm(`Are you sure you want to ${user.is_active ? 'deactivate' : 'activate'} ${user.full_name}?`)) return;
+    if (!window.confirm(
+      `Are you sure you want to ${user.is_active ? 'deactivate' : 'activate'} ${user.full_name}?`
+    )) return;
+
     try {
       await usersAPI.toggleStatus(user.user_id, !user.is_active);
       showToast({ type: 'success', message: `Account ${user.is_active ? 'deactivated' : 'activated'} successfully.` });
@@ -44,7 +47,9 @@ function Staff() {
           <p className="page-subtitle">Manage clinic personnel and system access.</p>
         </div>
         <div className="header-actions">
-          <button className="btn-add-staff" onClick={() => setShowModal(true)}>+ Add New Staff</button>
+          <button className="btn-add-staff" onClick={() => setShowModal(true)}>
+            + Add New Staff
+          </button>
         </div>
       </div>
 
@@ -58,6 +63,7 @@ function Staff() {
                 <th>Role</th>
                 <th>Staff ID</th>
                 <th>Nurse No.</th>
+                <th>Clinic</th>
                 <th>Phone</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -79,7 +85,7 @@ function Staff() {
                   <td>
                     <span style={{
                       fontFamily: 'monospace', fontSize: '0.8rem',
-                      background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px'
+                      background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px'
                     }}>
                       {u.staff_id || '—'}
                     </span>
@@ -89,11 +95,27 @@ function Staff() {
                       <span style={{
                         fontFamily: 'monospace', fontSize: '0.8rem',
                         background: '#f0fdf4', color: '#166534',
-                        padding: '2px 6px', borderRadius: '4px',
+                        padding: '2px 8px', borderRadius: '4px',
                         border: '1px solid #bbf7d0'
                       }}>
                         {u.nurse_number}
                       </span>
+                    ) : (
+                      <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>N/A</span>
+                    )}
+                  </td>
+                  <td>
+                    {u.clinic_number ? (
+                      <div>
+                        <div style={{ fontWeight: '600', fontSize: '0.85rem' }}>
+                          {u.clinic_name || '—'}
+                        </div>
+                        <div style={{
+                          fontFamily: 'monospace', fontSize: '0.75rem', color: '#6b7280'
+                        }}>
+                          {u.clinic_number}
+                        </div>
+                      </div>
                     ) : (
                       <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>N/A</span>
                     )}

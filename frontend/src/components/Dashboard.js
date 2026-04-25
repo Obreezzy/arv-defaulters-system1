@@ -3,8 +3,7 @@ import StatCard from './StatCard';
 import PickupForm from './PickupForm';
 import PatientForm from './PatientForm';
 import './Dashboard.css';
-import { defaultersAPI, patientsAPI } from '../services/api';
-import { schedulerAPI } from '../services/api';
+import { defaultersAPI, patientsAPI, schedulerAPI } from '../services/api';
 import { useNotifications } from '../contexts/NotificationContext';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title } from 'chart.js';
 import { Doughnut } from 'react-chartjs-2';
@@ -15,7 +14,6 @@ export const getActiveAlerts = () => {
   try { return JSON.parse(localStorage.getItem('weatherAlerts') || '[]'); }
   catch { return []; }
 };
-
 export const saveAlerts = (alerts) => {
   localStorage.setItem('weatherAlerts', JSON.stringify(alerts));
 };
@@ -39,11 +37,10 @@ function WeatherAlertModal({ onClose, onSave }) {
     const alert = {
       id: Date.now(), type: alertType, label: type.label,
       riskBoost: type.riskBoost, affectedArea: affectedArea.trim(),
-      description, createdAt: new Date().toISOString(),
+      description, createdAt: new Date().toISOString()
     };
     saveAlerts([...getActiveAlerts(), alert]);
-    onSave();
-    onClose();
+    onSave(); onClose();
   };
 
   return (
@@ -83,21 +80,19 @@ function WeatherAlertModal({ onClose, onSave }) {
   );
 }
 
-// ── currentUser is now received from App.js ──
 function Dashboard({ onNavigate, currentUser }) {
   const { showToast } = useNotifications();
 
   const [stats, setStats] = useState({
     totalPatients: 0, activePatients: 0, activeDefaulters: 0,
-    highRisk: 0, mediumRisk: 0, adherenceRate: 0,
+    highRisk: 0, mediumRisk: 0, adherenceRate: 0
   });
-
-  const [loading, setLoading]                   = useState(true);
-  const [sendingSMS, setSendingSMS]             = useState(false);
-  const [showPickupForm, setShowPickupForm]     = useState(false);
-  const [showPatientForm, setShowPatientForm]   = useState(false);
-  const [showAlertModal, setShowAlertModal]     = useState(false);
-  const [activeAlerts, setActiveAlerts]         = useState(getActiveAlerts());
+  const [loading, setLoading]                 = useState(true);
+  const [sendingSMS, setSendingSMS]           = useState(false);
+  const [showPickupForm, setShowPickupForm]   = useState(false);
+  const [showPatientForm, setShowPatientForm] = useState(false);
+  const [showAlertModal, setShowAlertModal]   = useState(false);
+  const [activeAlerts, setActiveAlerts]       = useState(getActiveAlerts());
 
   useEffect(() => { fetchDashboardData(); }, []);
 
@@ -108,20 +103,17 @@ function Dashboard({ onNavigate, currentUser }) {
         patientsAPI.getAllPatients(),
         defaultersAPI.getAllDefaulters()
       ]);
-
-      const patients  = patientsRes.patients  || patientsRes.data  || [];
+      const patients   = patientsRes.patients   || patientsRes.data   || [];
       const defaulters = defaultersRes.defaulters || defaultersRes.data || [];
-      const activePatients       = patients.filter(p => p.is_active !== false).length;
-      const predictedHighRisk    = patients.filter(p => p.risk_level === 'High').length;
-      const predictedMediumRisk  = patients.filter(p => p.risk_level === 'Medium').length;
-
+      const activePatients      = patients.filter(p => p.is_active !== false).length;
+      const predictedHighRisk   = patients.filter(p => p.risk_level === 'High').length;
+      const predictedMediumRisk = patients.filter(p => p.risk_level === 'Medium').length;
       setStats({
         totalPatients: patients.length, activePatients,
         activeDefaulters: defaulters.length,
         highRisk: predictedHighRisk, mediumRisk: predictedMediumRisk,
         adherenceRate: patients.length > 0
-          ? Math.round(((activePatients - defaulters.length) / activePatients) * 100)
-          : 0
+          ? Math.round(((activePatients - defaulters.length) / activePatients) * 100) : 0
       });
       setLoading(false);
     } catch (err) {
@@ -152,14 +144,13 @@ function Dashboard({ onNavigate, currentUser }) {
 
   const handleAlertSaved = () => {
     setActiveAlerts(getActiveAlerts());
-    showToast({ type: 'success', message: '🚨 Weather alert activated! Affected patients risk scores updated.' });
+    showToast({ type: 'success', message: '🚨 Weather alert activated!' });
   };
 
   const riskChartData = {
     labels: ['High Risk', 'Medium Risk', 'Low Risk'],
     datasets: [{ data: [stats.highRisk, stats.mediumRisk, Math.max(0, stats.totalPatients - (stats.highRisk + stats.mediumRisk))], backgroundColor: ['#ef4444', '#f59e0b', '#10b981'], borderWidth: 0 }]
   };
-
   const adherenceChartData = {
     labels: ['Adherent', 'Defaulting'],
     datasets: [{ data: [Math.max(0, stats.activePatients - stats.activeDefaulters), stats.activeDefaulters], backgroundColor: ['#10b981', '#ef4444'], borderWidth: 0 }]
@@ -187,9 +178,9 @@ function Dashboard({ onNavigate, currentUser }) {
       )}
 
       <div className="stats-grid">
-        <StatCard title="Total Patients"  value={stats.totalPatients}       icon="👥" color="#3b82f6" />
-        <StatCard title="Adherence Rate"  value={`${stats.adherenceRate}%`} icon="📈" color="#10b981" />
-        <StatCard title="Missed Pickups"  value={stats.activeDefaulters}    icon="⚠️" color="#ef4444" />
+        <StatCard title="Total Patients" value={stats.totalPatients}       icon="👥" color="#3b82f6" />
+        <StatCard title="Adherence Rate" value={`${stats.adherenceRate}%`} icon="📈" color="#10b981" />
+        <StatCard title="Missed Pickups" value={stats.activeDefaulters}    icon="⚠️" color="#ef4444" />
       </div>
 
       <div className="action-buttons-grid">
@@ -249,7 +240,6 @@ function Dashboard({ onNavigate, currentUser }) {
         </div>
       </div>
 
-      {/* ── currentUser forwarded to both forms ── */}
       {showPatientForm && (
         <PatientForm
           onClose={() => setShowPatientForm(false)}

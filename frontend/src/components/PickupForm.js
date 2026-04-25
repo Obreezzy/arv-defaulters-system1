@@ -6,25 +6,38 @@ import { useNotifications } from '../contexts/NotificationContext';
 function PickupForm({ isOpen, onClose, onSuccess, preselectedPatient = null, currentUser = null }) {
   const { showToast, addNotification } = useNotifications();
 
-  const [step, setStep]                   = useState('search');
+  const [step, setStep]                       = useState('search');
   const [selectedPatient, setSelectedPatient] = useState(null);
-  const [patients, setPatients]           = useState([]);
-  const [searchQuery, setSearchQuery]     = useState('');
-  const [loading, setLoading]             = useState(false);
+  const [patients, setPatients]               = useState([]);
+  const [searchQuery, setSearchQuery]         = useState('');
+  const [loading, setLoading]                 = useState(false);
 
-  // ── Determine if the logged-in user is a nurse ──
-  const isNurse      = currentUser?.role === 'healthcare_worker';
-  const autoNurseNum = currentUser?.nurse_number || '';
+  // ── Is this user a nurse? ──
+  const isNurse = currentUser?.role === 'healthcare_worker';
 
-  const [formData, setFormData] = useState({
+  const getInitialFormData = () => ({
     pickup_date:       new Date().toISOString().split('T')[0],
     next_pickup_date:  '',
     quantity_dispensed: '',
-    clinic_number:     '',
-    nurse_number:      autoNurseNum,  // pre-fill if nurse
-    dispensing_clinic: '',
+    clinic_number:     isNurse ? (currentUser?.clinic_number || '') : '',
+    nurse_number:      isNurse ? (currentUser?.nurse_number  || '') : '',
+    dispensing_clinic: isNurse ? (currentUser?.clinic_name   || '') : '',
     notes:             ''
   });
+
+  const [formData, setFormData] = useState(getInitialFormData);
+
+  // Re-sync if currentUser loads after mount
+  useEffect(() => {
+    if (isNurse) {
+      setFormData(prev => ({
+        ...prev,
+        clinic_number:     currentUser?.clinic_number || '',
+        nurse_number:      currentUser?.nurse_number  || '',
+        dispensing_clinic: currentUser?.clinic_name   || ''
+      }));
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     if (isOpen) {
@@ -37,31 +50,16 @@ function PickupForm({ isOpen, onClose, onSuccess, preselectedPatient = null, cur
     }
   }, [isOpen, preselectedPatient]);
 
-  // Re-sync nurse number if currentUser loads after mount
-  useEffect(() => {
-    if (isNurse && autoNurseNum) {
-      setFormData(prev => ({ ...prev, nurse_number: autoNurseNum }));
-    }
-  }, [currentUser]);
-
   const resetForm = () => {
     setStep('search');
     setSelectedPatient(null);
     setSearchQuery('');
-    setFormData({
-      pickup_date:       new Date().toISOString().split('T')[0],
-      next_pickup_date:  '',
-      quantity_dispensed: '',
-      clinic_number:     '',
-      nurse_number:      autoNurseNum,  // keep nurse number on reset
-      dispensing_clinic: '',
-      notes:             ''
-    });
+    setFormData(getInitialFormData());
   };
 
   const loadPatients = async () => {
     try {
-      const res = await patientsAPI.getAllPatients();
+      const res        = await patientsAPI.getAllPatients();
       const activeList = (res.data || res.patients || []).filter(p => p.is_active !== false);
       setPatients(activeList);
     } catch (err) {
@@ -92,7 +90,6 @@ function PickupForm({ isOpen, onClose, onSuccess, preselectedPatient = null, cur
       showToast({ type: 'error', message: 'Clinic number is required' });
       return;
     }
-    // Nurse number is always required — it's either auto-filled or manually entered
     if (!formData.nurse_number.trim()) {
       showToast({ type: 'error', message: 'Nurse number is required' });
       return;
@@ -131,9 +128,18 @@ function PickupForm({ isOpen, onClose, onSuccess, preselectedPatient = null, cur
 
   if (!isOpen) return null;
 
+  // ── Reusable locked field style ──
+  const lockedStyle = {
+    backgroundColor: '#f0fdf4',
+    color:           '#166534',
+    fontWeight:      '600',
+    border:          '2px solid #bbf7d0',
+    cursor:          'not-allowed'
+  };
+
   return (
     <div className="form-overlay" onClick={onClose}>
-      <div className="form-modal pickup-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="form-modal pickup-modal" onClick={e => e.stopPropagation()}>
 
         <div className="form-header">
           <h2>💊 Record Pickup</h2>
@@ -149,7 +155,7 @@ function PickupForm({ isOpen, onClose, onSuccess, preselectedPatient = null, cur
                 type="text"
                 placeholder="🔍 Type patient name or ID..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={e => setSearchQuery(e.target.value)}
                 className="search-input"
                 autoFocus
               />
@@ -193,98 +199,98 @@ function PickupForm({ isOpen, onClose, onSuccess, preselectedPatient = null, cur
                 )}
               </div>
 
-              {/* Dispensing Details */}
+              {/* ── Nurse identity banner ── */}
+              {isNurse && (
+                <div style={{
+                  background: '#f0fdf4', border: '1px solid #bbf7d0',
+                  borderRadius: '8px', padding: '0.6rem 1rem',
+                  marginBottom: '1rem', fontSize: '0.82rem', color: '#166534'
+                }}>
+                  ✅ Logged in as <strong>{currentUser.full_name}</strong> —
+                  clinic details and nurse number auto-filled from your account.
+                </div>
+              )}
+
+              {/* ── Dispensing Details ── */}
               <div className="pickup-section-title">🏥 Dispensing Details</div>
               <div className="form-row">
+
+                {/* Clinic Number */}
                 <div className="form-group">
                   <label>Clinic Number <span style={{ color: '#ef4444' }}>*</span></label>
-                  <input
-                    type="text"
-                    value={formData.clinic_number}
-                    onChange={(e) => setFormData({ ...formData, clinic_number: e.target.value })}
-                    placeholder="e.g. CLN-001"
-                    required
-                  />
-                  <small>Patient can use this at any clinic</small>
+                  {isNurse ? (
+                    <>
+                      <input type="text" value={formData.clinic_number} readOnly style={lockedStyle} />
+                      <small style={{ color: '#166534' }}>Auto-filled from your account</small>
+                    </>
+                  ) : (
+                    <>
+                      <input type="text" value={formData.clinic_number}
+                        onChange={e => setFormData({ ...formData, clinic_number: e.target.value })}
+                        placeholder="e.g. CLN-001" required />
+                      <small>Patient can use this at any clinic</small>
+                    </>
+                  )}
                 </div>
 
+                {/* Nurse Number */}
                 <div className="form-group">
                   <label>Nurse Number <span style={{ color: '#ef4444' }}>*</span></label>
                   {isNurse ? (
-                    // ── NURSE: locked, auto-filled from their account ──
                     <>
-                      <input
-                        type="text"
-                        value={formData.nurse_number}
-                        readOnly
-                        style={{
-                          backgroundColor: '#f0fdf4',
-                          color: '#166534',
-                          fontWeight: '600',
-                          border: '2px solid #bbf7d0',
-                          cursor: 'not-allowed'
-                        }}
-                      />
-                      <small style={{ color: '#166534' }}>
-                        ✅ Auto-filled from your account ({currentUser.full_name})
-                      </small>
+                      <input type="text" value={formData.nurse_number} readOnly style={lockedStyle} />
+                      <small style={{ color: '#166534' }}>Auto-filled from your account</small>
                     </>
                   ) : (
-                    // ── ADMIN / DATA ENTRY: manual entry ──
                     <>
-                      <input
-                        type="text"
-                        value={formData.nurse_number}
-                        onChange={(e) => setFormData({ ...formData, nurse_number: e.target.value })}
-                        placeholder="e.g. NRS-045"
-                        required
-                      />
+                      <input type="text" value={formData.nurse_number}
+                        onChange={e => setFormData({ ...formData, nurse_number: e.target.value })}
+                        placeholder="e.g. NRS-045" required />
                       <small>Enter the dispensing nurse's number</small>
                     </>
                   )}
                 </div>
               </div>
 
+              {/* Dispensing Clinic Name */}
               <div className="form-group">
-                <label>Dispensing Clinic Name (Optional)</label>
-                <input
-                  type="text"
-                  value={formData.dispensing_clinic}
-                  onChange={(e) => setFormData({ ...formData, dispensing_clinic: e.target.value })}
-                  placeholder="e.g. Sakubva Clinic, Mutare"
-                />
-                <small>Leave blank if picking up at their registered clinic</small>
+                <label>Dispensing Clinic Name {!isNurse && '(Optional)'}</label>
+                {isNurse ? (
+                  <>
+                    <input type="text" value={formData.dispensing_clinic} readOnly style={lockedStyle} />
+                    <small style={{ color: '#166534' }}>Auto-filled from your account</small>
+                  </>
+                ) : (
+                  <>
+                    <input type="text" value={formData.dispensing_clinic}
+                      onChange={e => setFormData({ ...formData, dispensing_clinic: e.target.value })}
+                      placeholder="e.g. Sakubva Clinic, Mutare" />
+                    <small>Leave blank if picking up at their registered clinic</small>
+                  </>
+                )}
               </div>
 
-              {/* Pickup Schedule */}
+              {/* ── Pickup Schedule ── */}
               <div className="pickup-section-title" style={{ marginTop: '1rem' }}>📅 Pickup Schedule</div>
               <div className="form-row">
                 <div className="form-group">
                   <label>Pickup Date</label>
-                  <input
-                    type="date"
-                    value={formData.pickup_date}
-                    onChange={(e) => setFormData({ ...formData, pickup_date: e.target.value })}
-                    required
-                  />
+                  <input type="date" value={formData.pickup_date}
+                    onChange={e => setFormData({ ...formData, pickup_date: e.target.value })}
+                    required />
                 </div>
                 <div className="form-group">
                   <label>Next Appointment</label>
-                  <input
-                    type="date"
-                    value={formData.next_pickup_date}
-                    onChange={(e) => setFormData({ ...formData, next_pickup_date: e.target.value })}
-                    required
-                  />
+                  <input type="date" value={formData.next_pickup_date}
+                    onChange={e => setFormData({ ...formData, next_pickup_date: e.target.value })}
+                    required />
                 </div>
               </div>
 
               <div className="form-group">
                 <label>Notes (Optional)</label>
-                <textarea
-                  rows="2"
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                <textarea rows="2" value={formData.notes}
+                  onChange={e => setFormData({ ...formData, notes: e.target.value })}
                   placeholder="Condition notes, adherence issues, etc."
                   style={{ width: '100%' }}
                 />

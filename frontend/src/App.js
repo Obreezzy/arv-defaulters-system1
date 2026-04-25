@@ -58,7 +58,6 @@ function AppContent() {
     setActiveTab('dashboard');
   };
 
-  // ── Pass currentUser to every component that needs nurse/staff context ──
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard': return <Dashboard onNavigate={handleNavigate} currentUser={user} />;
@@ -98,7 +97,7 @@ function AppContent() {
           <div className="user-section">
             <NotificationDropdown />
 
-            {/* Show staff ID badge in header */}
+            {/* Staff ID badge */}
             {user?.staff_id && (
               <span style={{
                 fontSize: '0.7rem', color: '#6b7280', background: '#f3f4f6',
@@ -111,9 +110,7 @@ function AppContent() {
             <div className="user-avatar">
               {user?.full_name?.charAt(0) || user?.username?.charAt(0) || 'H'}
             </div>
-
             <span className="user-name">{user?.full_name || user?.username || 'Healthcare Worker'}</span>
-
             <button className="btn-logout" onClick={handleLogout}>Logout</button>
           </div>
         </div>
@@ -121,22 +118,17 @@ function AppContent() {
 
       <nav className="navigation">
         <div className="nav-content">
-          <button className={activeTab === 'dashboard' ? 'nav-button active' : 'nav-button'} onClick={() => handleNavigate('dashboard')}>
-            Dashboard
-          </button>
-          <button className={activeTab === 'defaulters' ? 'nav-button active' : 'nav-button'} onClick={() => handleNavigate('defaulters')}>
-            Defaulters
-          </button>
-          <button className={activeTab === 'patients' ? 'nav-button active' : 'nav-button'} onClick={() => handleNavigate('patients', 'All')}>
-            Patients
-          </button>
-          <button className={activeTab === 'reports' ? 'nav-button active' : 'nav-button'} onClick={() => handleNavigate('reports')}>
-            Reports
-          </button>
+          <button className={activeTab === 'dashboard' ? 'nav-button active' : 'nav-button'}
+            onClick={() => handleNavigate('dashboard')}>Dashboard</button>
+          <button className={activeTab === 'defaulters' ? 'nav-button active' : 'nav-button'}
+            onClick={() => handleNavigate('defaulters')}>Defaulters</button>
+          <button className={activeTab === 'patients' ? 'nav-button active' : 'nav-button'}
+            onClick={() => handleNavigate('patients', 'All')}>Patients</button>
+          <button className={activeTab === 'reports' ? 'nav-button active' : 'nav-button'}
+            onClick={() => handleNavigate('reports')}>Reports</button>
           {user?.role === 'admin' && (
-            <button className={activeTab === 'staff' ? 'nav-button active' : 'nav-button'} onClick={() => handleNavigate('staff')}>
-              Staff Management
-            </button>
+            <button className={activeTab === 'staff' ? 'nav-button active' : 'nav-button'}
+              onClick={() => handleNavigate('staff')}>Staff Management</button>
           )}
         </div>
       </nav>

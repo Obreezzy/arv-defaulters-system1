@@ -4,11 +4,10 @@ import { defaultersAPI } from '../services/api';
 import { useNotifications } from '../contexts/NotificationContext';
 import PickupForm from './PickupForm';
 
-// ── currentUser received from App.js ──
 function Defaulters({ currentUser }) {
   const { showToast } = useNotifications();
-  const [defaulters, setDefaulters]     = useState([]);
-  const [loading, setLoading]           = useState(true);
+  const [defaulters, setDefaulters]       = useState([]);
+  const [loading, setLoading]             = useState(true);
   const [pickupPatient, setPickupPatient] = useState(null);
 
   useEffect(() => { loadDefaulters(); }, []);
@@ -17,8 +16,7 @@ function Defaulters({ currentUser }) {
     try {
       setLoading(true);
       const res  = await defaultersAPI.getAllDefaulters();
-      const data = res.defaulters || res.data || [];
-      setDefaulters(data);
+      setDefaulters(res.defaulters || res.data || []);
     } catch (err) {
       console.error(err);
       showToast({ type: 'error', message: 'Failed to load defaulters list' });
@@ -98,11 +96,11 @@ function Defaulters({ currentUser }) {
                       <button
                         className="btn-record-pickup"
                         onClick={() => setPickupPatient({
-                          patient_id:      d.patient_id,
-                          first_name:      d.first_name,
-                          last_name:       d.last_name,
-                          patient_number:  d.patient_number,
-                          phone_number:    d.phone_number,
+                          patient_id:       d.patient_id,
+                          first_name:       d.first_name,
+                          last_name:        d.last_name,
+                          patient_number:   d.patient_number,
+                          phone_number:     d.phone_number,
                           pickup_frequency: d.pickup_frequency || 30
                         })}
                       >

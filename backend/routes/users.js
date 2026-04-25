@@ -1,7 +1,7 @@
 // backend/routes/users.js
 
 const express = require('express');
-const router = express.Router();
+const router  = express.Router();
 const { query } = require('../config/db');
 const { verifyToken } = require('../middleware/auth');
 
@@ -18,7 +18,8 @@ router.get('/', async (req, res) => {
 
     const result = await query(`
       SELECT user_id, username, email, full_name, role, phone_number,
-             staff_id, nurse_number, is_active, created_at
+             staff_id, nurse_number, clinic_name, clinic_number,
+             is_active, created_at
       FROM users
       ORDER BY created_at DESC
     `);
@@ -41,7 +42,8 @@ router.put('/:id/status', async (req, res) => {
 
     const { is_active } = req.body;
     const result = await query(
-      `UPDATE users SET is_active = $1 WHERE user_id = $2 RETURNING user_id, username, is_active`,
+      `UPDATE users SET is_active = $1 WHERE user_id = $2
+       RETURNING user_id, username, is_active`,
       [is_active, req.params.id]
     );
 

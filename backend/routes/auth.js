@@ -13,23 +13,28 @@ const router = express.Router();
 // ============================================
 
 const generateStaffId = async () => {
-  const result = await query(
-    `SELECT staff_id FROM users WHERE staff_id IS NOT NULL ORDER BY staff_id DESC LIMIT 1`
-  );
-  if (result.rows.length === 0) return 'STF-001';
-  const last = result.rows[0].staff_id;
-  const num  = parseInt(last.replace('STF-', '')) + 1;
-  return `STF-${String(num).padStart(3, '0')}`;
+  // Pull all numeric staff IDs, cast to int, get the max
+  const result = await query(`
+    SELECT COALESCE(MAX(
+      CAST(REGEXP_REPLACE(staff_id, '[^0-9]', '', 'g') AS INTEGER)
+    ), 0) AS max_num
+    FROM users
+    WHERE staff_id IS NOT NULL
+  `);
+  const next = parseInt(result.rows[0].max_num) + 1;
+  return 'STF-' + String(next).padStart(3, '0');
 };
 
 const generateNurseNumber = async () => {
-  const result = await query(
-    `SELECT nurse_number FROM users WHERE nurse_number IS NOT NULL ORDER BY nurse_number DESC LIMIT 1`
-  );
-  if (result.rows.length === 0) return 'NRS-101';
-  const last = result.rows[0].nurse_number;
-  const num  = parseInt(last.replace('NRS-', '')) + 1;
-  return `NRS-${String(num).padStart(3, '0')}`;
+  const result = await query(`
+    SELECT COALESCE(MAX(
+      CAST(REGEXP_REPLACE(nurse_number, '[^0-9]', '', 'g') AS INTEGER)
+    ), 100) AS max_num
+    FROM users
+    WHERE nurse_number IS NOT NULL
+  `);
+  const next = parseInt(result.rows[0].max_num) + 1;
+  return 'NRS-' + String(next).padStart(3, '0');
 };
 
 // ============================================
@@ -45,49 +50,89 @@ router.post('/register', async (req, res) => {
 
     console.log('📝 Registration attempt:', { username, email, role });
 
+    // ── Required fields ──
     if (!username || !email || !password || !full_name || !role) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide all required fields: username, email, password, full_name, role'
+        message: 'All fields are required: Full Name, Username, Email, Password and Role.'
       });
     }
 
+    // ── Email format ──
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      return res.status(400).json({ success: false, message: 'Please provide a valid email address' });
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter a valid email address (e.g. name@clinic.com).'
+      });
     }
 
+    // ── Role ──
     const validRoles = ['admin', 'healthcare_worker', 'data_entry'];
     if (!validRoles.includes(role)) {
-      return res.status(400).json({ success: false, message: `Role must be one of: ${validRoles.join(', ')}` });
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid role selected. Must be Healthcare Worker, Data Entry, or Administrator.'
+      });
     }
 
-    // Clinic fields required for nurses and data entry
+    // ── Clinic fields required for non-admins ──
     if (role !== 'admin' && !clinic_number) {
-      return res.status(400).json({ success: false, message: 'Clinic number is required for this role.' });
+      return res.status(400).json({
+        success: false,
+        message: 'Clinic Number is required for nurses and data entry staff.'
+      });
     }
     if (role !== 'admin' && !clinic_name) {
-      return res.status(400).json({ success: false, message: 'Clinic name is required for this role.' });
+      return res.status(400).json({
+        success: false,
+        message: 'Clinic Name is required for nurses and data entry staff.'
+      });
     }
 
-    const usernameCheck = await query('SELECT user_id FROM users WHERE username = $1', [username]);
+    // ── Duplicate username ──
+    const usernameCheck = await query(
+      'SELECT user_id FROM users WHERE LOWER(username) = LOWER($1)',
+      [username]
+    );
     if (usernameCheck.rows.length > 0) {
-      return res.status(409).json({ success: false, message: 'Username already exists. Please choose another.' });
+      return res.status(409).json({
+        success: false,
+        message: 'Username "' + username + '" is already taken. Please choose a different username.'
+      });
     }
 
-    const emailCheck = await query('SELECT user_id FROM users WHERE email = $1', [email]);
+    // ── Duplicate email ──
+    const emailCheck = await query(
+      'SELECT user_id FROM users WHERE LOWER(email) = LOWER($1)',
+      [email]
+    );
     if (emailCheck.rows.length > 0) {
-      return res.status(409).json({ success: false, message: 'Email already registered.' });
+      return res.status(409).json({
+        success: false,
+        message: 'An account with email "' + email + '" already exists. Please use a different email or contact the administrator.'
+      });
     }
 
+    // ── Password length ──
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 6 characters long.'
+      });
+    }
+
+    // ── Hash password ──
     const salt          = await bcrypt.genSalt(10);
     const password_hash = await bcrypt.hash(password, salt);
 
+    // ── Generate IDs using REGEXP MAX — always correct even with mixed formats ──
     const staff_id     = await generateStaffId();
     const nurse_number = role === 'healthcare_worker' ? await generateNurseNumber() : null;
 
-    console.log(`🪪 Staff ID: ${staff_id}${nurse_number ? ` | Nurse No: ${nurse_number}` : ''}`);
+    console.log('🪪 Generated Staff ID:', staff_id, nurse_number ? '| Nurse No: ' + nurse_number : '');
 
+    // ── Insert ──
     const result = await query(
       `INSERT INTO users (
           username, email, password_hash, full_name, role, phone_number,
@@ -98,19 +143,22 @@ router.post('/register', async (req, res) => {
                  staff_id, nurse_number, clinic_name, clinic_number, created_at`,
       [
         username, email, password_hash, full_name, role,
-        phone_number || null, true,
-        staff_id, nurse_number,
+        phone_number  || null,
+        true,
+        staff_id,
+        nurse_number,
         clinic_name   || null,
         clinic_number || null
       ]
     );
 
     const newUser = result.rows[0];
-    console.log('✅ User created:', newUser.user_id);
+    console.log('✅ User created successfully:', newUser.user_id, '| Staff ID:', staff_id);
 
     res.status(201).json({
       success: true,
-      message: 'User registered successfully',
+      message: full_name + ' has been registered successfully with Staff ID: ' + staff_id +
+        (nurse_number ? ' and Nurse Number: ' + nurse_number : '') + '.',
       user: {
         user_id:       newUser.user_id,
         username:      newUser.username,
@@ -128,9 +176,39 @@ router.post('/register', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Registration error:', error);
+
+    // ── Catch any remaining DB unique constraint errors ──
+    if (error.code === '23505') {
+      const detail = error.detail || '';
+      if (detail.includes('staff_id')) {
+        return res.status(409).json({
+          success: false,
+          message: 'Staff ID conflict detected. Please try again — the system will generate a new ID.'
+        });
+      }
+      if (detail.includes('nurse_number')) {
+        return res.status(409).json({
+          success: false,
+          message: 'Nurse Number conflict detected. Please try again — the system will generate a new number.'
+        });
+      }
+      if (detail.includes('username')) {
+        return res.status(409).json({
+          success: false,
+          message: 'That username is already taken. Please choose another.'
+        });
+      }
+      if (detail.includes('email')) {
+        return res.status(409).json({
+          success: false,
+          message: 'That email address is already registered.'
+        });
+      }
+    }
+
     res.status(500).json({
       success: false,
-      message: 'Error registering user',
+      message: 'An unexpected error occurred while creating the account. Please try again.',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
@@ -146,30 +224,42 @@ router.post('/login', async (req, res) => {
     console.log('🔑 Login attempt:', email);
 
     if (!email || !password) {
-      return res.status(400).json({ success: false, message: 'Please provide email and password' });
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter both your email address and password.'
+      });
     }
 
     const result = await query(
       `SELECT user_id, username, email, password_hash, full_name, role,
               phone_number, is_active, staff_id, nurse_number,
               clinic_name, clinic_number, created_at
-       FROM users WHERE email = $1`,
+       FROM users WHERE LOWER(email) = LOWER($1)`,
       [email]
     );
 
     if (result.rows.length === 0) {
-      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+      return res.status(401).json({
+        success: false,
+        message: 'No account found with that email address. Please check and try again.'
+      });
     }
 
     const user = result.rows[0];
 
     if (!user.is_active) {
-      return res.status(403).json({ success: false, message: 'Account is deactivated. Please contact administrator.' });
+      return res.status(403).json({
+        success: false,
+        message: 'Your account has been deactivated. Please contact the system administrator.'
+      });
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password_hash);
     if (!isPasswordValid) {
-      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+      return res.status(401).json({
+        success: false,
+        message: 'Incorrect password. Please try again.'
+      });
     }
 
     const payload = {
@@ -212,7 +302,7 @@ router.post('/login', async (req, res) => {
     console.error('❌ Login error:', error);
     res.status(500).json({
       success: false,
-      message: 'Error during login',
+      message: 'An error occurred during login. Please try again.',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
@@ -233,7 +323,10 @@ router.get('/me', verifyToken, async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'User account not found. Please log in again.'
+      });
     }
 
     const user = result.rows[0];
@@ -258,7 +351,10 @@ router.get('/me', verifyToken, async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error fetching user profile:', error);
-    res.status(500).json({ success: false, message: 'Error fetching user profile' });
+    res.status(500).json({
+      success: false,
+      message: 'Could not load user profile. Please try again.'
+    });
   }
 });
 

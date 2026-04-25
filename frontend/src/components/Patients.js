@@ -61,19 +61,49 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
     }
   };
 
+  // ── Improved matching: strips "ward", "village", "district" keywords
+  //    so "Ward 14" matches a patient whose ward field is just "14" ──
+  const normaliseLocation = (str) => {
+    return (str || '')
+      .toLowerCase()
+      .replace(/\bward\b/g, '')
+      .replace(/\bvillage\b/g, '')
+      .replace(/\bdistrict\b/g, '')
+      .replace(/\bchieftaincy\b/g, '')
+      .replace(/[^a-z0-9\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
   const getPatientAlerts = (patient) => {
     if (!activeAlerts.length) return [];
-    const loc = [
+
+    // Build normalised patient location tokens from all location fields
+    const patientLocRaw = [
       patient.district || '',
       patient.ward     || '',
       patient.village  || '',
       patient.headman  || ''
-    ].join(' ').toLowerCase();
+    ].join(' ');
 
-    return activeAlerts.filter(alert =>
-      loc.includes(alert.affectedArea.toLowerCase()) ||
-      alert.affectedArea.toLowerCase().includes(loc)
-    );
+    const patientLoc = normaliseLocation(patientLocRaw);
+
+    return activeAlerts.filter(alert => {
+      const alertLoc = normaliseLocation(alert.affectedArea);
+
+      // Match if either contains the other (handles partial matches too)
+      return (
+        patientLoc.includes(alertLoc) ||
+        alertLoc.includes(patientLoc) ||
+        // Also try matching individual tokens e.g "14" in "ward 14"
+        alertLoc.split(' ').some(token =>
+          token.length > 1 && patientLoc.includes(token)
+        ) ||
+        patientLoc.split(' ').some(token =>
+          token.length > 1 && alertLoc.includes(token)
+        )
+      );
+    });
   };
 
   const getEffectiveRisk = (patient) => {

@@ -61,48 +61,45 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
     }
   };
 
-  // ── Improved matching: strips "ward", "village", "district" keywords
-  //    so "Ward 14" matches a patient whose ward field is just "14" ──
-  const normaliseLocation = (str) => {
+  // ── Strip location keywords to get the raw value ──
+  // "Ward 14" → "14", "Chigodora Village" → "chigodora"
+  const stripLocationKeywords = (str) => {
     return (str || '')
       .toLowerCase()
-      .replace(/\bward\b/g, '')
-      .replace(/\bvillage\b/g, '')
-      .replace(/\bdistrict\b/g, '')
-      .replace(/\bchieftaincy\b/g, '')
+      .replace(/\bward\b/gi, '')
+      .replace(/\bvillage\b/gi, '')
+      .replace(/\bdistrict\b/gi, '')
+      .replace(/\bchieftaincy\b/gi, '')
+      .replace(/\bsabhuku\b/gi, '')
       .replace(/[^a-z0-9\s]/g, '')
       .replace(/\s+/g, ' ')
       .trim();
   };
 
+  // ── Match alert against ONLY the patient's specific location fields ──
+  // Each field is checked individually — not combined into one string
+  // This prevents "14" in "Ward 14" matching patient number "P84955014"
   const getPatientAlerts = (patient) => {
     if (!activeAlerts.length) return [];
 
-    // Build normalised patient location tokens from all location fields
-    const patientLocRaw = [
-      patient.district || '',
-      patient.ward     || '',
-      patient.village  || '',
-      patient.headman  || ''
-    ].join(' ');
-
-    const patientLoc = normaliseLocation(patientLocRaw);
+    // Patient's individual location fields, normalised
+    const patientWard     = stripLocationKeywords(String(patient.ward     || ''));
+    const patientVillage  = stripLocationKeywords(String(patient.village  || ''));
+    const patientDistrict = stripLocationKeywords(String(patient.district || ''));
+    const patientHeadman  = stripLocationKeywords(String(patient.headman  || ''));
 
     return activeAlerts.filter(alert => {
-      const alertLoc = normaliseLocation(alert.affectedArea);
+      const alertNorm = stripLocationKeywords(alert.affectedArea);
 
-      // Match if either contains the other (handles partial matches too)
-      return (
-        patientLoc.includes(alertLoc) ||
-        alertLoc.includes(patientLoc) ||
-        // Also try matching individual tokens e.g "14" in "ward 14"
-        alertLoc.split(' ').some(token =>
-          token.length > 1 && patientLoc.includes(token)
-        ) ||
-        patientLoc.split(' ').some(token =>
-          token.length > 1 && alertLoc.includes(token)
-        )
-      );
+      if (!alertNorm) return false;
+
+      // Check each location field independently with exact or contained match
+      const matchesWard     = patientWard     && (patientWard === alertNorm     || alertNorm === patientWard);
+      const matchesVillage  = patientVillage  && (patientVillage.includes(alertNorm)  || alertNorm.includes(patientVillage));
+      const matchesDistrict = patientDistrict && (patientDistrict.includes(alertNorm) || alertNorm.includes(patientDistrict));
+      const matchesHeadman  = patientHeadman  && (patientHeadman.includes(alertNorm)  || alertNorm.includes(patientHeadman));
+
+      return matchesWard || matchesVillage || matchesDistrict || matchesHeadman;
     });
   };
 

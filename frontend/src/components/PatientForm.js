@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './PatientForm.css';
 import { patientsAPI } from '../services/api';
 import { useNotifications } from '../contexts/NotificationContext';
@@ -8,13 +8,13 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
 
   const isNurse = currentUser?.role === 'healthcare_worker';
 
-  const [formData, setFormData] = useState(() => ({
-    patient_number:           'P' + Date.now().toString().slice(-8),
+  const [formData, setFormData] = useState({
+    patient_number:           '',
     first_name:               '',
     last_name:                '',
     date_of_birth:            '',
     gender:                   '',
-    enrollment_date:          new Date().toISOString().split('T')[0],
+    enrollment_date:          '',
     phone_number:             '',
     alternative_phone:        '',
     email:                    '',
@@ -37,15 +37,27 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
     has_kidney_disease:       false,
     other_chronic_condition:  '',
     risk_notes:               '',
-    clinic_number:     isNurse ? (currentUser?.clinic_number || '') : '',
-    nurse_number:      isNurse ? (currentUser?.nurse_number  || '') : '',
-    dispensing_clinic: isNurse ? (currentUser?.clinic_name   || '') : ''
-  }));
+    clinic_number:            '',
+    nurse_number:             '',
+    dispensing_clinic:        ''
+  });
 
   const [isNewPatient, setIsNewPatient] = useState(true);
   const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState(null);
   const [success, setSuccess]           = useState(false);
+
+  // ── Initialise auto-generated fields on mount ──
+  useEffect(() => {
+    setFormData(prev => ({
+      ...prev,
+      patient_number:  'P' + Date.now().toString().slice(-8),
+      enrollment_date: new Date().toISOString().split('T')[0],
+      clinic_number:   isNurse ? (currentUser?.clinic_number || '') : '',
+      nurse_number:    isNurse ? (currentUser?.nurse_number  || '') : '',
+      dispensing_clinic: isNurse ? (currentUser?.clinic_name || '') : ''
+    }));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -66,12 +78,6 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
     if (letterFields.includes(name)   && !lettersOnly.test(value))     return;
     if (wholeNumFields.includes(name) && !wholeNumberOnly.test(value)) return;
     if (phoneFields.includes(name)    && !phoneChars.test(value))      return;
-
-    // DOB range check: 1947–2018
-    if (name === 'date_of_birth' && value) {
-      const year = new Date(value).getFullYear();
-      if (year < 1947 || year > 2018) return;
-    }
 
     setFormData(prev => ({ ...prev, [name]: value }));
   };
@@ -152,6 +158,7 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
       return fail('Village must contain letters only');
     if (formData.headman && !lettersOnly.test(formData.headman))
       return fail('Headman name must contain letters only');
+
     if (!formData.clinic_number) return fail('Clinic Number is required');
     if (!formData.nurse_number)  return fail('Nurse Number is required');
 
@@ -197,7 +204,7 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
       });
       setTimeout(async () => {
         if (onSuccess) await onSuccess();
-        if (onClose) onClose();
+        if (onClose)   onClose();
       }, 1500);
     } catch (err) {
       const msg = err.response?.data?.message || 'Failed to register patient.';
@@ -375,9 +382,7 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
 
           {/* ── Next of Kin ── */}
           <div className="form-section">
-            <h3 className="section-title">
-              Next of Kin Details <span className="required">*</span>
-            </h3>
+            <h3 className="section-title">Next of Kin Details <span className="required">*</span></h3>
             <p style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '1rem' }}>
               All next of kin fields are required for emergency contact purposes.
             </p>
@@ -522,7 +527,6 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
                   </>
                 )}
               </div>
-
               <div className="form-group">
                 <label>Nurse Number <span className="required">*</span></label>
                 {isNurse ? (

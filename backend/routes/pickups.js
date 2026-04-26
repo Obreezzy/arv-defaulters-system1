@@ -113,7 +113,7 @@ router.post('/record', async (req, res) => {
       dispensing_clinic, notes
     } = req.body;
 
-    console.log('📅 Recording pickup:', { patient_id, pickup_date, next_pickup_date, nurse_number });
+    console.log('📅 Recording pickup:', { patient_id, pickup_date, nurse_number });
 
     if (!patient_id) return res.status(400).json({ success: false, message: 'patient_id is required' });
     if (!pickup_date) return res.status(400).json({ success: false, message: 'pickup_date is required' });
@@ -165,30 +165,9 @@ router.post('/record', async (req, res) => {
       });
     }
 
-    // ── Resolve dispensed_by: look up user_id from nurse_number ──
-    // dispensed_by column is INTEGER (user_id), not a string
-    let dispensed_by = null;
-    if (nurse_number) {
-      try {
-        const userRes = await db.query(
-          'SELECT user_id FROM users WHERE nurse_number = $1 LIMIT 1',
-          [nurse_number]
-        );
-        if (userRes.rows.length > 0) {
-          dispensed_by = userRes.rows[0].user_id;
-          console.log('👤 Dispensed by user_id:', dispensed_by, '(nurse:', nurse_number + ')');
-        }
-      } catch (e) {
-        console.log('⚠️ Could not resolve dispensed_by:', e.message);
-      }
-    }
-
-    // ── Insert pickup with all correct columns ──
-    // pickup_date        = the actual date patient came in
-    // actual_pickup_date = same value (legacy column kept in sync)
-    // scheduled_date     = same as pickup_date (the date it was scheduled for)
-    // dispensed_by       = user_id (integer) of the nurse
-    // nurse_number       = nurse number string e.g. NRS-004 (for reference)
+    // ── Insert pickup ──
+    // dispensed_by = nurse_number string directly (e.g. NRS-005)
+    // no separate nurse_number column — dispensed_by IS the nurse identifier
     const result = await db.query(
       `INSERT INTO medication_pickups (
           patient_id,
@@ -201,31 +180,30 @@ router.post('/record', async (req, res) => {
           days_supply,
           dispensed_by,
           clinic_number,
-          nurse_number,
           dispensing_clinic,
           notes
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        RETURNING *`,
       [
         patient_id,
         treatment_id,
-        pickup_date,           // column 3  — pickup_date
-        pickup_date,           // column 4  — actual_pickup_date (kept in sync)
-        pickup_date,           // column 5  — scheduled_date
-        computed_next_pickup,  // column 6  — next_pickup_date
-        quantity_dispensed || 30, // column 7
-        days_supply,           // column 8
-        dispensed_by,          // column 9  — integer user_id (can be null)
-        clinic_number  || null, // column 10
-        nurse_number   || null, // column 11 — string e.g. NRS-004
-        dispensing_clinic || null, // column 12
-        notes          || null  // column 13
+        pickup_date,              // pickup_date
+        pickup_date,              // actual_pickup_date (kept in sync)
+        pickup_date,              // scheduled_date
+        computed_next_pickup,     // next_pickup_date
+        quantity_dispensed || 30, // quantity_dispensed
+        days_supply,              // days_supply
+        nurse_number || null,     // dispensed_by = nurse number string e.g. NRS-005
+        clinic_number    || null, // clinic_number
+        dispensing_clinic || null,// dispensing_clinic
+        notes            || null  // notes
       ]
     );
 
     const pickup_record = result.rows[0];
-    console.log('✅ Pickup recorded! ID:', pickup_record.pickup_id);
+    console.log('✅ Pickup recorded! ID:', pickup_record.pickup_id,
+      '| Dispensed by:', nurse_number);
 
     // ── Update next_pickup_date on patient ──
     try {
@@ -256,14 +234,14 @@ router.post('/record', async (req, res) => {
       message: 'Medication pickup recorded successfully. Risk score updated.',
       pickup: {
         pickup_id:          pickup_record.pickup_id,
-        patient_id:         pickup_record.patient_id,
         patient_name:       patient.first_name + ' ' + patient.last_name,
         pickup_date:        pickup_record.pickup_date,
         next_pickup_date:   pickup_record.next_pickup_date,
         days_supply:        pickup_record.days_supply,
         quantity_dispensed: pickup_record.quantity_dispensed,
-        dispensed_by:       dispensed_by,
-        nurse_number:       nurse_number,
+        dispensed_by:       nurse_number || null,
+        clinic_number:      clinic_number || null,
+        dispensing_clinic:  dispensing_clinic || null,
         notes:              pickup_record.notes
       },
       patient: {
@@ -311,7 +289,8 @@ router.post('/set-first-pickup', async (req, res) => {
     );
 
     const patient = patientCheck.rows[0];
-    console.log('✅ First pickup date set for', patient.first_name, patient.last_name, ':', first_pickup_date);
+    console.log('✅ First pickup date set for',
+      patient.first_name, patient.last_name, ':', first_pickup_date);
 
     res.json({
       success: true,
@@ -321,7 +300,10 @@ router.post('/set-first-pickup', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error setting first pickup date:', error.message);
-    res.status(500).json({ success: false, message: 'Server error while setting first pickup date' });
+    res.status(500).json({
+      success: false,
+      message: 'Server error while setting first pickup date'
+    });
   }
 });
 
@@ -340,17 +322,16 @@ router.get('/recent', async (req, res) => {
           mp.next_pickup_date,
           mp.days_supply,
           mp.quantity_dispensed,
-          mp.nurse_number,
+          mp.dispensed_by,
+          mp.clinic_number,
           mp.dispensing_clinic,
           mp.notes,
           mp.created_at,
           p.first_name,
           p.last_name,
-          p.patient_number,
-          u.full_name AS dispensed_by_name
+          p.patient_number
        FROM medication_pickups mp
        JOIN patients p ON mp.patient_id = p.patient_id
-       LEFT JOIN users u ON mp.dispensed_by = u.user_id
        ORDER BY mp.created_at DESC
        LIMIT $1`,
       [limit]
@@ -376,17 +357,16 @@ router.get('/patient/:patient_id', async (req, res) => {
           mp.next_pickup_date,
           mp.days_supply,
           mp.quantity_dispensed,
-          mp.nurse_number,
+          mp.dispensed_by,
+          mp.clinic_number,
           mp.dispensing_clinic,
           mp.notes,
           mp.created_at,
           p.first_name,
           p.last_name,
-          p.patient_number,
-          u.full_name AS dispensed_by_name
+          p.patient_number
        FROM medication_pickups mp
        JOIN patients p ON mp.patient_id = p.patient_id
-       LEFT JOIN users u ON mp.dispensed_by = u.user_id
        WHERE mp.patient_id = $1
        ORDER BY mp.actual_pickup_date DESC`,
       [patient_id]

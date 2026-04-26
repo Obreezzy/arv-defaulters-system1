@@ -22,72 +22,48 @@ const getAge = (dob) => {
 
 // ============================================
 // HELPER: Predict risk for a single patient
-// Uses exact same logic as patients.js /predict
 // ============================================
 const predictRiskForPatient = (patient, history) => {
   let score   = 0;
   let factors = [];
 
-  const distance   = isNaN(parseFloat(patient.distance_from_clinic))
-    ? 0
-    : parseFloat(patient.distance_from_clinic);
-  const age        = getAge(patient.date_of_birth);
+  const distance    = isNaN(parseFloat(patient.distance_from_clinic))
+    ? 0 : parseFloat(patient.distance_from_clinic);
+  const age         = getAge(patient.date_of_birth);
   const latePickups = parseInt(history.late_pickups) || 0;
 
-  // ── Late pickup history ──
   if (latePickups > 2) {
-    score += 40;
-    factors.push('Chronic Defaulter (Late 3+ times)');
+    score += 40; factors.push('Chronic Defaulter (Late 3+ times)');
   } else if (latePickups === 2) {
-    score += 25;
-    factors.push('History of late pickups (2 times)');
+    score += 25; factors.push('History of late pickups (2 times)');
   } else if (latePickups === 1) {
-    score += 10;
-    factors.push('First-time late pickup');
+    score += 10; factors.push('First-time late pickup');
   }
 
-  // ── Distance ──
-  if (distance > 25) {
-    score += 30;
-    factors.push('Extreme Distance (>25km)');
-  } else if (distance > 15) {
-    score += 15;
-    factors.push('Long Distance (>15km)');
-  }
+  if (distance > 25)      { score += 30; factors.push('Extreme Distance (>25km)'); }
+  else if (distance > 15) { score += 15; factors.push('Long Distance (>15km)'); }
 
-  // ── Age ──
-  if (age >= 18 && age <= 24) {
-    score += 20;
-    factors.push('High-Risk Age Group (18-24)');
-  } else if (age > 70) {
-    score += 10;
-    factors.push('Geriatric Vulnerability');
-  }
+  if (age >= 18 && age <= 24) { score += 20; factors.push('High-Risk Age Group (18-24)'); }
+  else if (age > 70)          { score += 10; factors.push('Geriatric Vulnerability'); }
 
   score = Math.min(score, 100);
   const label = score >= 50 ? 'High' : score >= 25 ? 'Medium' : 'Low';
-
   return { score, label, factors };
 };
 
 // ============================================
 // HELPER: Recalculate and save risk for one patient
-// Called automatically after every pickup is recorded
 // ============================================
 const recalculatePatientRisk = async (patient_id) => {
   try {
-    // Get patient details
     const patientRes = await db.query(
-      `SELECT patient_id, date_of_birth, distance_from_clinic, gender,
-              district, ward, village, headman
+      `SELECT patient_id, date_of_birth, distance_from_clinic
        FROM patients WHERE patient_id = $1`,
       [patient_id]
     );
-
     if (patientRes.rows.length === 0) return;
     const patient = patientRes.rows[0];
 
-    // Get pickup history — count late pickups using same LAG logic as patients.js
     const historyRes = await db.query(
       `SELECT
           COUNT(*) AS total_pickups,
@@ -108,28 +84,20 @@ const recalculatePatientRisk = async (patient_id) => {
     const history    = historyRes.rows[0];
     const prediction = predictRiskForPatient(patient, history);
 
-    // Save updated risk back to patients table
     await db.query(
       `UPDATE patients
        SET risk_score = $1, risk_level = $2, risk_factors = $3
        WHERE patient_id = $4`,
-      [
-        prediction.score,
-        prediction.label,
-        JSON.stringify(prediction.factors),
-        patient_id
-      ]
+      [prediction.score, prediction.label, JSON.stringify(prediction.factors), patient_id]
     );
 
     console.log(
-      '🔮 Risk recalculated for patient', patient_id,
+      '🔮 Risk recalculated | Patient:', patient_id,
       '| Score:', prediction.score + '%',
       '| Level:', prediction.label,
       '| Late pickups:', history.late_pickups
     );
-
   } catch (err) {
-    // Non-fatal — pickup was still recorded successfully
     console.error('⚠️ Risk recalculation failed (non-fatal):', err.message);
   }
 };
@@ -145,17 +113,17 @@ router.post('/record', async (req, res) => {
       dispensing_clinic, notes
     } = req.body;
 
-    console.log('📅 Recording pickup:', { patient_id, pickup_date, next_pickup_date });
+    console.log('📅 Recording pickup:', { patient_id, pickup_date, next_pickup_date, nurse_number });
 
     if (!patient_id) return res.status(400).json({ success: false, message: 'patient_id is required' });
     if (!pickup_date) return res.status(400).json({ success: false, message: 'pickup_date is required' });
 
-    // Get patient
+    // ── Get patient ──
     const patientCheck = await db.query(
-      'SELECT patient_id, first_name, last_name, pickup_frequency FROM patients WHERE patient_id = $1',
+      `SELECT patient_id, first_name, last_name, pickup_frequency
+       FROM patients WHERE patient_id = $1`,
       [patient_id]
     );
-
     if (patientCheck.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Patient not found' });
     }
@@ -163,32 +131,28 @@ router.post('/record', async (req, res) => {
     const patient              = patientCheck.rows[0];
     const frequency            = patient.pickup_frequency || 30;
     const computed_next_pickup = next_pickup_date || calculateNextPickupDate(pickup_date, frequency);
-
-    console.log('✅ Found patient:', patient.first_name, patient.last_name);
-    console.log('📅 Next pickup:', computed_next_pickup);
-
-    // Days supply
-    const days_supply = Math.ceil(
+    const days_supply          = Math.ceil(
       (new Date(computed_next_pickup) - new Date(pickup_date)) / (1000 * 60 * 60 * 24)
     );
 
-    // Get treatment_id
+    console.log('✅ Patient:', patient.first_name, patient.last_name);
+    console.log('📅 Next pickup:', computed_next_pickup, '| Days supply:', days_supply);
+
+    // ── Get treatment_id ──
     let treatment_id = null;
     try {
-      const treatmentCheck = await db.query(
+      const t1 = await db.query(
         'SELECT treatment_id FROM patient_treatments WHERE patient_id = $1 AND is_current = true LIMIT 1',
         [patient_id]
       );
-      if (treatmentCheck.rows.length > 0) {
-        treatment_id = treatmentCheck.rows[0].treatment_id;
+      if (t1.rows.length > 0) {
+        treatment_id = t1.rows[0].treatment_id;
       } else {
-        const anyTreatment = await db.query(
+        const t2 = await db.query(
           'SELECT treatment_id FROM patient_treatments WHERE patient_id = $1 ORDER BY treatment_id DESC LIMIT 1',
           [patient_id]
         );
-        if (anyTreatment.rows.length > 0) {
-          treatment_id = anyTreatment.rows[0].treatment_id;
-        }
+        if (t2.rows.length > 0) treatment_id = t2.rows[0].treatment_id;
       }
     } catch (e) {
       console.log('⚠️ Could not find treatment:', e.message);
@@ -201,31 +165,69 @@ router.post('/record', async (req, res) => {
       });
     }
 
-    // Insert pickup
+    // ── Resolve dispensed_by: look up user_id from nurse_number ──
+    // dispensed_by column is INTEGER (user_id), not a string
+    let dispensed_by = null;
+    if (nurse_number) {
+      try {
+        const userRes = await db.query(
+          'SELECT user_id FROM users WHERE nurse_number = $1 LIMIT 1',
+          [nurse_number]
+        );
+        if (userRes.rows.length > 0) {
+          dispensed_by = userRes.rows[0].user_id;
+          console.log('👤 Dispensed by user_id:', dispensed_by, '(nurse:', nurse_number + ')');
+        }
+      } catch (e) {
+        console.log('⚠️ Could not resolve dispensed_by:', e.message);
+      }
+    }
+
+    // ── Insert pickup with all correct columns ──
+    // pickup_date        = the actual date patient came in
+    // actual_pickup_date = same value (legacy column kept in sync)
+    // scheduled_date     = same as pickup_date (the date it was scheduled for)
+    // dispensed_by       = user_id (integer) of the nurse
+    // nurse_number       = nurse number string e.g. NRS-004 (for reference)
     const result = await db.query(
       `INSERT INTO medication_pickups (
-          patient_id, treatment_id, scheduled_date, actual_pickup_date,
-          next_pickup_date, quantity_dispensed, days_supply,
-          clinic_number, nurse_number, dispensing_clinic, notes
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+          patient_id,
+          treatment_id,
+          pickup_date,
+          actual_pickup_date,
+          scheduled_date,
+          next_pickup_date,
+          quantity_dispensed,
+          days_supply,
+          dispensed_by,
+          clinic_number,
+          nurse_number,
+          dispensing_clinic,
+          notes
+       )
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        RETURNING *`,
       [
-        patient_id, treatment_id,
-        pickup_date, pickup_date,
-        computed_next_pickup,
-        quantity_dispensed || 30,
-        days_supply,
-        clinic_number     || null,
-        nurse_number      || null,
-        dispensing_clinic || null,
-        notes             || null
+        patient_id,
+        treatment_id,
+        pickup_date,           // column 3  — pickup_date
+        pickup_date,           // column 4  — actual_pickup_date (kept in sync)
+        pickup_date,           // column 5  — scheduled_date
+        computed_next_pickup,  // column 6  — next_pickup_date
+        quantity_dispensed || 30, // column 7
+        days_supply,           // column 8
+        dispensed_by,          // column 9  — integer user_id (can be null)
+        clinic_number  || null, // column 10
+        nurse_number   || null, // column 11 — string e.g. NRS-004
+        dispensing_clinic || null, // column 12
+        notes          || null  // column 13
       ]
     );
 
     const pickup_record = result.rows[0];
     console.log('✅ Pickup recorded! ID:', pickup_record.pickup_id);
 
-    // Update next pickup date on patient record
+    // ── Update next_pickup_date on patient ──
     try {
       await db.query(
         'UPDATE patients SET next_pickup_date = $1 WHERE patient_id = $2',
@@ -235,33 +237,34 @@ router.post('/record', async (req, res) => {
       console.log('Could not update patient next_pickup_date:', e.message);
     }
 
-    // Remove from defaulters if applicable
+    // ── Remove from defaulters if applicable ──
     try {
       await db.query(
-        `UPDATE defaulters SET status = $1, resolved_date = CURRENT_TIMESTAMP
-         WHERE patient_id = $2 AND status = $3`,
-        ['returned', patient_id, 'pending']
+        `UPDATE defaulters SET status = 'returned', resolved_date = CURRENT_TIMESTAMP
+         WHERE patient_id = $1 AND status = 'pending'`,
+        [patient_id]
       );
     } catch (e) {
       console.log('ℹ️ Defaulters update skipped:', e.message);
     }
 
-    // ── OPTION A: Recalculate risk score based on updated pickup history ──
-    // This runs after the pickup is inserted so the new record is included
-    // Non-blocking — pickup response is not delayed even if this fails
+    // ── Recalculate risk score (Option A) ──
     await recalculatePatientRisk(patient_id);
 
     res.json({
       success: true,
       message: 'Medication pickup recorded successfully. Risk score updated.',
       pickup: {
-        pickup_id:         pickup_record.pickup_id,
-        patient_id:        pickup_record.patient_id,
-        pickup_date:       pickup_record.actual_pickup_date,
-        next_pickup_date:  pickup_record.next_pickup_date,
-        days_supply:       pickup_record.days_supply,
+        pickup_id:          pickup_record.pickup_id,
+        patient_id:         pickup_record.patient_id,
+        patient_name:       patient.first_name + ' ' + patient.last_name,
+        pickup_date:        pickup_record.pickup_date,
+        next_pickup_date:   pickup_record.next_pickup_date,
+        days_supply:        pickup_record.days_supply,
         quantity_dispensed: pickup_record.quantity_dispensed,
-        notes:             pickup_record.notes
+        dispensed_by:       dispensed_by,
+        nurse_number:       nurse_number,
+        notes:              pickup_record.notes
       },
       patient: {
         patient_id: patient.patient_id,
@@ -298,7 +301,6 @@ router.post('/set-first-pickup', async (req, res) => {
       'SELECT patient_id, first_name, last_name FROM patients WHERE patient_id = $1',
       [patient_id]
     );
-
     if (patientCheck.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Patient not found' });
     }
@@ -317,13 +319,9 @@ router.post('/set-first-pickup', async (req, res) => {
       patient_id,
       first_pickup_date
     });
-
   } catch (error) {
     console.error('❌ Error setting first pickup date:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Server error while setting first pickup date'
-    });
+    res.status(500).json({ success: false, message: 'Server error while setting first pickup date' });
   }
 });
 
@@ -334,11 +332,25 @@ router.get('/recent', async (req, res) => {
   try {
     const limit  = parseInt(req.query.limit) || 20;
     const result = await db.query(
-      `SELECT mp.pickup_id, mp.patient_id, mp.actual_pickup_date, mp.next_pickup_date,
-              mp.days_supply, mp.quantity_dispensed, mp.notes, mp.created_at,
-              p.first_name, p.last_name, p.patient_number
+      `SELECT
+          mp.pickup_id,
+          mp.patient_id,
+          mp.pickup_date,
+          mp.actual_pickup_date,
+          mp.next_pickup_date,
+          mp.days_supply,
+          mp.quantity_dispensed,
+          mp.nurse_number,
+          mp.dispensing_clinic,
+          mp.notes,
+          mp.created_at,
+          p.first_name,
+          p.last_name,
+          p.patient_number,
+          u.full_name AS dispensed_by_name
        FROM medication_pickups mp
        JOIN patients p ON mp.patient_id = p.patient_id
+       LEFT JOIN users u ON mp.dispensed_by = u.user_id
        ORDER BY mp.created_at DESC
        LIMIT $1`,
       [limit]
@@ -357,11 +369,24 @@ router.get('/patient/:patient_id', async (req, res) => {
   try {
     const { patient_id } = req.params;
     const result = await db.query(
-      `SELECT mp.pickup_id, mp.actual_pickup_date, mp.next_pickup_date,
-              mp.days_supply, mp.quantity_dispensed, mp.notes, mp.created_at,
-              p.first_name, p.last_name, p.patient_number
+      `SELECT
+          mp.pickup_id,
+          mp.pickup_date,
+          mp.actual_pickup_date,
+          mp.next_pickup_date,
+          mp.days_supply,
+          mp.quantity_dispensed,
+          mp.nurse_number,
+          mp.dispensing_clinic,
+          mp.notes,
+          mp.created_at,
+          p.first_name,
+          p.last_name,
+          p.patient_number,
+          u.full_name AS dispensed_by_name
        FROM medication_pickups mp
        JOIN patients p ON mp.patient_id = p.patient_id
+       LEFT JOIN users u ON mp.dispensed_by = u.user_id
        WHERE mp.patient_id = $1
        ORDER BY mp.actual_pickup_date DESC`,
       [patient_id]

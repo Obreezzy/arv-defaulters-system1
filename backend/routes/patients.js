@@ -15,7 +15,6 @@ router.post('/predict', async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // ✅ INCLUDES chronic_diseases
         const result = await client.query(`
             SELECT patient_id, date_of_birth, distance_from_clinic, gender, district, ward, village, headman, chronic_diseases
             FROM patients WHERE is_active = true
@@ -59,7 +58,7 @@ router.post('/predict', async (req, res) => {
 });
 
 // ==========================================
-// 2. GET ALL PATIENTS (excludes active defaulters)
+// 2. GET ALL PATIENTS
 // ==========================================
 router.get('/', async (req, res) => {
     try {
@@ -88,8 +87,7 @@ router.post('/', async (req, res) => {
         distance_from_clinic, enrollment_date, arv_regimen,
         pickup_frequency, next_pickup_date, is_new_patient,
         emergency_contact_name, emergency_contact_phone,
-        clinic_number, nurse_number, dispensing_clinic, 
-        chronic_diseases // ✅ Included Chronic Diseases
+        clinic_number, nurse_number, dispensing_clinic, chronic_diseases
     } = req.body;
 
     const userId = req.user?.id || req.user?.user_id || req.user?.userId || req.user?.sub || req.user?.ID || null;
@@ -120,7 +118,6 @@ router.post('/', async (req, res) => {
             finalPickupDate = calc.toISOString().split('T')[0];
         }
 
-        // 1. Insert into patients table
         const result = await query(
             `INSERT INTO patients (
                 patient_number, first_name, last_name, date_of_birth, gender,
@@ -145,16 +142,24 @@ router.post('/', async (req, res) => {
 
         const newPatient = result.rows[0];
 
-        // 2. ✅ NEW FIX: Auto-create the patient_treatments record so pickups don't fail!
+        // Fallback-protected treatment creation
         if (arv_regimen) {
             try {
                 await query(
-                    `INSERT INTO patient_treatments (patient_id, regimen, start_date, is_current)
+                    `INSERT INTO patient_treatments (patient_id, arv_regimen, start_date, is_current)
                      VALUES ($1, $2, CURRENT_DATE, true)`,
                     [newPatient.patient_id, arv_regimen]
                 );
             } catch (treatmentErr) {
-                console.error('⚠️ Could not auto-create treatment record:', treatmentErr.message);
+                try {
+                    await query(
+                        `INSERT INTO patient_treatments (patient_id, start_date, is_current)
+                         VALUES ($1, CURRENT_DATE, true)`,
+                        [newPatient.patient_id]
+                    );
+                } catch(e) {
+                    console.error('⚠️ Could not auto-create treatment record entirely:', e.message);
+                }
             }
         }
 
@@ -188,7 +193,7 @@ router.put('/:id', async (req, res) => {
         alternative_phone, email, district, ward, village, headman, distance_from_clinic,
         arv_regimen, emergency_contact_name, emergency_contact_phone,
         next_pickup_date, pickup_frequency, clinic_number, nurse_number, dispensing_clinic,
-        chronic_diseases // ✅ Included Chronic Diseases
+        chronic_diseases
     } = req.body;
 
     try {
@@ -212,18 +217,6 @@ router.put('/:id', async (req, res) => {
                 req.params.id
             ]
         );
-
-        // ✅ Optional: Also update the patient_treatments if the regimen changed
-        if (arv_regimen) {
-            try {
-                await query(
-                    `UPDATE patient_treatments SET regimen = $1 WHERE patient_id = $2 AND is_current = true`,
-                    [arv_regimen, req.params.id]
-                );
-            } catch (e) {
-                console.log('Non-fatal error updating treatment:', e.message);
-            }
-        }
 
         res.json({ success: true, patient: result.rows[0] });
     } catch (err) {
@@ -250,7 +243,6 @@ const predictRisk = (patient, history, activeWeatherAlerts = []) => {
     if (age >= 18 && age <= 24) { score += 20; factors.push("High-Risk Age Group (18-24)"); }
     else if (age > 70)          { score += 10; factors.push("Geriatric Vulnerability"); }
 
-    // ✅ NEW: CHRONIC DISEASE LOGIC
     if (patient.chronic_diseases && patient.chronic_diseases.trim() !== '') {
         score += 15; 
         factors.push(`Comorbidities Present (${patient.chronic_diseases})`);

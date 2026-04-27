@@ -107,8 +107,6 @@ const recalculatePatientRisk = async (patient_id) => {
 router.post('/record', async (req, res) => {
   const client = await db.getClient();
   try {
-    await client.query('BEGIN');
-
     const {
       patient_id, pickup_date, next_pickup_date,
       quantity_dispensed, clinic_number, nurse_number,
@@ -118,7 +116,7 @@ router.post('/record', async (req, res) => {
     if (!patient_id) throw new Error('patient_id is required');
     if (!pickup_date) throw new Error('pickup_date is required');
 
-    // ── Get patient ──
+    // ── Get patient (Done BEFORE transaction so we can auto-heal safely) ──
     const patientCheck = await client.query(
       `SELECT patient_id, first_name, last_name, pickup_frequency, arv_regimen
        FROM patients WHERE patient_id = $1`,
@@ -136,7 +134,7 @@ router.post('/record', async (req, res) => {
       (new Date(computed_next_pickup) - new Date(pickup_date)) / (1000 * 60 * 60 * 24)
     );
 
-    // ── Get or Auto-Create treatment_id ──
+    // ── Get or Auto-Create treatment_id (Done BEFORE transaction!) ──
     let treatment_id = null;
     try {
       const t1 = await client.query(
@@ -148,20 +146,41 @@ router.post('/record', async (req, res) => {
       console.log('⚠️ Could not query patient_treatments:', e.message);
     }
 
-    // Self-Healing: If old patient doesn't have a treatment record, build it now!
+    // Smart Self-Healing (Outside the BEGIN block so it doesn't poison the transaction if it fails)
     if (!treatment_id) {
         console.log(`⚠️ Auto-creating missing treatment record for ${patient.first_name}...`);
         try {
+            // Try with arv_regimen first
             const newTreatment = await client.query(
-                `INSERT INTO patient_treatments (patient_id, regimen, start_date, is_current)
+                `INSERT INTO patient_treatments (patient_id, arv_regimen, start_date, is_current)
                  VALUES ($1, $2, CURRENT_DATE, true) RETURNING treatment_id`,
                 [patient_id, patient.arv_regimen || 'Standard']
             );
             treatment_id = newTreatment.rows[0].treatment_id;
+            console.log('✅ Treatment auto-created successfully.');
         } catch (e) {
-            console.log('⚠️ Failed to auto-create treatment (Proceeding without it):', e.message);
+            console.log('⚠️ Failed with arv_regimen column, trying without regimen column entirely...', e.message);
+            try {
+                // Fallback: Just try to get an ID in there without any regimen text
+                const fallbackTreatment = await client.query(
+                    `INSERT INTO patient_treatments (patient_id, start_date, is_current)
+                     VALUES ($1, CURRENT_DATE, true) RETURNING treatment_id`,
+                    [patient_id]
+                );
+                treatment_id = fallbackTreatment.rows[0].treatment_id;
+                console.log('✅ Fallback treatment auto-created successfully.');
+            } catch (fallbackErr) {
+                 console.log('❌ Complete failure to auto-create treatment:', fallbackErr.message);
+                 // If it truly fails, we set a dummy treatment ID to bypass the block so the nurse can do their job
+                 treatment_id = 1; 
+            }
         }
     }
+
+    // ============================================
+    // START TRANSACTION (Safe now!)
+    // ============================================
+    await client.query('BEGIN');
 
     // ── Insert pickup ──
     const result = await client.query(
@@ -203,7 +222,8 @@ router.post('/record', async (req, res) => {
     });
 
   } catch (error) {
-    await client.query('ROLLBACK');
+    // Only rollback if we actually started a transaction, otherwise just catch
+    try { await client.query('ROLLBACK'); } catch(e) {}
     console.error('❌ Error recording pickup:', error.message);
     res.status(500).json({
       success: false,

@@ -138,7 +138,7 @@ router.post('/record', async (req, res) => {
     console.log('✅ Patient:', patient.first_name, patient.last_name);
     console.log('📅 Next pickup:', computed_next_pickup, '| Days supply:', days_supply);
 
-    // ── Get treatment_id ──
+    // ── Get treatment_id (REQUIRED) ──
     let treatment_id = null;
     try {
       const t1 = await db.query(
@@ -155,19 +155,20 @@ router.post('/record', async (req, res) => {
         if (t2.rows.length > 0) treatment_id = t2.rows[0].treatment_id;
       }
     } catch (e) {
-      console.log('⚠️ Could not find treatment:', e.message);
+      console.log('⚠️ Error looking up treatment:', e.message);
     }
 
+    // ── Block pickup if no treatment record found ──
     if (!treatment_id) {
       return res.status(400).json({
         success: false,
-        message: 'No treatment record found for this patient. Please assign a treatment first.'
+        message: patient.first_name + ' ' + patient.last_name +
+          ' has no ARV treatment record. Please ensure the patient is fully registered with a treatment plan before recording a pickup.'
       });
     }
 
     // ── Insert pickup ──
     // dispensed_by = nurse_number string directly (e.g. NRS-005)
-    // no separate nurse_number column — dispensed_by IS the nurse identifier
     const result = await db.query(
       `INSERT INTO medication_pickups (
           patient_id,
@@ -188,16 +189,16 @@ router.post('/record', async (req, res) => {
       [
         patient_id,
         treatment_id,
-        pickup_date,              // pickup_date
-        pickup_date,              // actual_pickup_date (kept in sync)
-        pickup_date,              // scheduled_date
-        computed_next_pickup,     // next_pickup_date
-        quantity_dispensed || 30, // quantity_dispensed
-        days_supply,              // days_supply
-        nurse_number || null,     // dispensed_by = nurse number string e.g. NRS-005
-        clinic_number    || null, // clinic_number
-        dispensing_clinic || null,// dispensing_clinic
-        notes            || null  // notes
+        pickup_date,
+        pickup_date,
+        pickup_date,
+        computed_next_pickup,
+        quantity_dispensed || 30,
+        days_supply,
+        nurse_number      || null,
+        clinic_number     || null,
+        dispensing_clinic || null,
+        notes             || null
       ]
     );
 
@@ -316,7 +317,6 @@ router.get('/recent', async (req, res) => {
     const result = await db.query(
       `SELECT
           mp.pickup_id,
-          mp.patient_id,
           mp.pickup_date,
           mp.actual_pickup_date,
           mp.next_pickup_date,
@@ -327,6 +327,7 @@ router.get('/recent', async (req, res) => {
           mp.dispensing_clinic,
           mp.notes,
           mp.created_at,
+          p.patient_id,
           p.first_name,
           p.last_name,
           p.patient_number

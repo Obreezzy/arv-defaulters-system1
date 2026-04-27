@@ -47,15 +47,20 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
   const [error, setError]               = useState(null);
   const [success, setSuccess]           = useState(false);
 
-  // ── Initialise auto-generated fields on mount ──
+  // ── Generate P + 5 random digits e.g. P47823 ──
+  const generatePatientNumber = () => {
+    return 'P' + Math.floor(10000 + Math.random() * 90000);
+  };
+
+  // ── Initialise fields on mount ──
   useEffect(() => {
     setFormData(prev => ({
       ...prev,
-      patient_number:  'P' + Date.now().toString().slice(-8),
-      enrollment_date: new Date().toISOString().split('T')[0],
-      clinic_number:   isNurse ? (currentUser?.clinic_number || '') : '',
-      nurse_number:    isNurse ? (currentUser?.nurse_number  || '') : '',
-      dispensing_clinic: isNurse ? (currentUser?.clinic_name || '') : ''
+      patient_number:    generatePatientNumber(),
+      enrollment_date:   new Date().toISOString().split('T')[0],
+      clinic_number:     isNurse ? (currentUser?.clinic_number || '') : '',
+      nurse_number:      isNurse ? (currentUser?.nurse_number  || '') : '',
+      dispensing_clinic: isNurse ? (currentUser?.clinic_name   || '') : ''
     }));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -230,7 +235,7 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
         <div className="form-modal success-modal">
           <div className="success-icon">✅</div>
           <h2>Patient Registered Successfully!</h2>
-          <p>Patient Number: {formData.patient_number}</p>
+          <p>Patient Number: <strong>{formData.patient_number}</strong></p>
           <p>{formData.first_name} {formData.last_name} has been added to the system.</p>
           {isNewPatient && formData.next_pickup_date && (
             <p style={{ color: '#3b82f6', fontWeight: 600 }}>
@@ -274,7 +279,7 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
                 <input type="text" name="patient_number" value={formData.patient_number}
                   onChange={handleChange} readOnly style={{ backgroundColor: '#f3f4f6' }} required />
                 <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>
-                  Auto-generated unique identifier
+                  Auto-generated — format P + 5 digits
                 </small>
               </div>
               <div className="form-group">

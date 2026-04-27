@@ -1,4 +1,3 @@
-// backend/routes/patients.js
 const express = require('express');
 const router = express.Router();
 const { query, getClient } = require('../config/db');
@@ -16,7 +15,7 @@ router.post('/predict', async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // ✅ UPDATED: Added chronic_diseases to the SELECT query
+        // ✅ INCLUDES chronic_diseases
         const result = await client.query(`
             SELECT patient_id, date_of_birth, distance_from_clinic, gender, district, ward, village, headman, chronic_diseases
             FROM patients WHERE is_active = true
@@ -83,14 +82,14 @@ router.get('/', async (req, res) => {
 // 3. CREATE PATIENT
 // ==========================================
 router.post('/', async (req, res) => {
-    // ✅ UPDATED: Destructured chronic_diseases from req.body
     const {
         patient_number, first_name, last_name, date_of_birth, gender,
         phone_number, alternative_phone, email, district, ward, village, headman,
         distance_from_clinic, enrollment_date, arv_regimen,
         pickup_frequency, next_pickup_date, is_new_patient,
         emergency_contact_name, emergency_contact_phone,
-        clinic_number, nurse_number, dispensing_clinic, chronic_diseases 
+        clinic_number, nurse_number, dispensing_clinic, 
+        chronic_diseases // ✅ Included Chronic Diseases
     } = req.body;
 
     const userId = req.user?.id || req.user?.user_id || req.user?.userId || req.user?.sub || req.user?.ID || null;
@@ -121,7 +120,7 @@ router.post('/', async (req, res) => {
             finalPickupDate = calc.toISOString().split('T')[0];
         }
 
-        // ✅ UPDATED: Added chronic_diseases to INSERT statement and params
+        // 1. Insert into patients table
         const result = await query(
             `INSERT INTO patients (
                 patient_number, first_name, last_name, date_of_birth, gender,
@@ -144,7 +143,22 @@ router.post('/', async (req, res) => {
             ]
         );
 
-        res.json({ success: true, patient: result.rows[0] });
+        const newPatient = result.rows[0];
+
+        // 2. ✅ NEW FIX: Auto-create the patient_treatments record so pickups don't fail!
+        if (arv_regimen) {
+            try {
+                await query(
+                    `INSERT INTO patient_treatments (patient_id, regimen, start_date, is_current)
+                     VALUES ($1, $2, CURRENT_DATE, true)`,
+                    [newPatient.patient_id, arv_regimen]
+                );
+            } catch (treatmentErr) {
+                console.error('⚠️ Could not auto-create treatment record:', treatmentErr.message);
+            }
+        }
+
+        res.json({ success: true, patient: newPatient });
     } catch (err) {
         console.error('Create patient error:', err);
         res.status(500).json({ success: false, message: err.message });
@@ -169,17 +183,15 @@ router.get('/:id', async (req, res) => {
 // 5. UPDATE PATIENT
 // ==========================================
 router.put('/:id', async (req, res) => {
-    // ✅ UPDATED: Destructured chronic_diseases from req.body
     const {
         first_name, last_name, date_of_birth, gender, phone_number,
         alternative_phone, email, district, ward, village, headman, distance_from_clinic,
         arv_regimen, emergency_contact_name, emergency_contact_phone,
         next_pickup_date, pickup_frequency, clinic_number, nurse_number, dispensing_clinic,
-        chronic_diseases
+        chronic_diseases // ✅ Included Chronic Diseases
     } = req.body;
 
     try {
-        // ✅ UPDATED: Added chronic_diseases to UPDATE statement and params
         const result = await query(
             `UPDATE patients SET
                 first_name=$1, last_name=$2, date_of_birth=$3, gender=$4,
@@ -200,6 +212,19 @@ router.put('/:id', async (req, res) => {
                 req.params.id
             ]
         );
+
+        // ✅ Optional: Also update the patient_treatments if the regimen changed
+        if (arv_regimen) {
+            try {
+                await query(
+                    `UPDATE patient_treatments SET regimen = $1 WHERE patient_id = $2 AND is_current = true`,
+                    [arv_regimen, req.params.id]
+                );
+            } catch (e) {
+                console.log('Non-fatal error updating treatment:', e.message);
+            }
+        }
+
         res.json({ success: true, patient: result.rows[0] });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });

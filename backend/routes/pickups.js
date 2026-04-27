@@ -62,7 +62,6 @@ const predictRiskForPatient = (patient, history) => {
 // ============================================
 const recalculatePatientRisk = async (patient_id) => {
   try {
-    // ✅ ADDED: chronic_diseases to SELECT query
     const patientRes = await db.query(
       `SELECT patient_id, date_of_birth, distance_from_clinic, chronic_diseases
        FROM patients WHERE patient_id = $1`,
@@ -98,12 +97,6 @@ const recalculatePatientRisk = async (patient_id) => {
       [prediction.score, prediction.label, JSON.stringify(prediction.factors), patient_id]
     );
 
-    console.log(
-      '🔮 Risk recalculated | Patient:', patient_id,
-      '| Score:', prediction.score + '%',
-      '| Level:', prediction.label,
-      '| Late pickups:', history.late_pickups
-    );
   } catch (err) {
     console.error('⚠️ Risk recalculation failed (non-fatal):', err.message);
   }
@@ -113,26 +106,29 @@ const recalculatePatientRisk = async (patient_id) => {
 // POST /api/pickups/record
 // ============================================
 router.post('/record', async (req, res) => {
+  // Use a transaction so if the patient fails to update, the pickup rolls back!
+  const client = await db.getClient();
   try {
+    await client.query('BEGIN');
+
     const {
       patient_id, pickup_date, next_pickup_date,
       quantity_dispensed, clinic_number, nurse_number,
       dispensing_clinic, notes
     } = req.body;
 
-    console.log('📅 Recording pickup:', { patient_id, pickup_date, nurse_number });
-
-    if (!patient_id) return res.status(400).json({ success: false, message: 'patient_id is required' });
-    if (!pickup_date) return res.status(400).json({ success: false, message: 'pickup_date is required' });
+    if (!patient_id) throw new Error('patient_id is required');
+    if (!pickup_date) throw new Error('pickup_date is required');
 
     // ── Get patient ──
-    const patientCheck = await db.query(
+    const patientCheck = await client.query(
       `SELECT patient_id, first_name, last_name, pickup_frequency
        FROM patients WHERE patient_id = $1`,
       [patient_id]
     );
+    
     if (patientCheck.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Patient not found' });
+      throw new Error('Patient not found in database.');
     }
 
     const patient              = patientCheck.rows[0];
@@ -142,130 +138,76 @@ router.post('/record', async (req, res) => {
       (new Date(computed_next_pickup) - new Date(pickup_date)) / (1000 * 60 * 60 * 24)
     );
 
-    console.log('✅ Patient:', patient.first_name, patient.last_name);
-    console.log('📅 Next pickup:', computed_next_pickup, '| Days supply:', days_supply);
-
     // ── Get treatment_id (REQUIRED) ──
     let treatment_id = null;
-    try {
-      const t1 = await db.query(
-        'SELECT treatment_id FROM patient_treatments WHERE patient_id = $1 AND is_current = true LIMIT 1',
+    const t1 = await client.query(
+      'SELECT treatment_id FROM patient_treatments WHERE patient_id = $1 AND is_current = true LIMIT 1',
+      [patient_id]
+    );
+    
+    if (t1.rows.length > 0) {
+      treatment_id = t1.rows[0].treatment_id;
+    } else {
+      const t2 = await client.query(
+        'SELECT treatment_id FROM patient_treatments WHERE patient_id = $1 ORDER BY treatment_id DESC LIMIT 1',
         [patient_id]
       );
-      if (t1.rows.length > 0) {
-        treatment_id = t1.rows[0].treatment_id;
-      } else {
-        const t2 = await db.query(
-          'SELECT treatment_id FROM patient_treatments WHERE patient_id = $1 ORDER BY treatment_id DESC LIMIT 1',
-          [patient_id]
-        );
-        if (t2.rows.length > 0) treatment_id = t2.rows[0].treatment_id;
-      }
-    } catch (e) {
-      console.log('⚠️ Error looking up treatment:', e.message);
+      if (t2.rows.length > 0) treatment_id = t2.rows[0].treatment_id;
     }
 
-    // ── Block pickup if no treatment record found ──
     if (!treatment_id) {
-      return res.status(400).json({
-        success: false,
-        message: patient.first_name + ' ' + patient.last_name +
-          ' has no ARV treatment record. Please ensure the patient is fully registered with a treatment plan before recording a pickup.'
-      });
+      throw new Error(`${patient.first_name} ${patient.last_name} has no ARV treatment record. Please ensure the patient is fully registered with a treatment plan.`);
     }
 
     // ── Insert pickup ──
-    // dispensed_by = nurse_number string directly (e.g. NRS-005)
-    const result = await db.query(
+    const result = await client.query(
       `INSERT INTO medication_pickups (
-          patient_id,
-          treatment_id,
-          pickup_date,
-          actual_pickup_date,
-          scheduled_date,
-          next_pickup_date,
-          quantity_dispensed,
-          days_supply,
-          dispensed_by,
-          clinic_number,
-          dispensing_clinic,
-          notes
-       )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-       RETURNING *`,
+          patient_id, treatment_id, pickup_date, actual_pickup_date, scheduled_date, next_pickup_date,
+          quantity_dispensed, days_supply, dispensed_by, clinic_number, dispensing_clinic, notes
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [
-        patient_id,
-        treatment_id,
-        pickup_date,
-        pickup_date,
-        pickup_date,
-        computed_next_pickup,
-        quantity_dispensed || 30,
-        days_supply,
-        nurse_number      || null,
-        clinic_number     || null,
-        dispensing_clinic || null,
-        notes             || null
+        patient_id, treatment_id, pickup_date, pickup_date, pickup_date, computed_next_pickup,
+        quantity_dispensed || 30, days_supply, nurse_number || null, clinic_number || null,
+        dispensing_clinic || null, notes || null
       ]
     );
 
     const pickup_record = result.rows[0];
-    console.log('✅ Pickup recorded! ID:', pickup_record.pickup_id,
-      '| Dispensed by:', nurse_number);
 
     // ── Update next_pickup_date on patient ──
-    try {
-      await db.query(
-        'UPDATE patients SET next_pickup_date = $1 WHERE patient_id = $2',
-        [computed_next_pickup, patient_id]
-      );
-    } catch (e) {
-      console.log('Could not update patient next_pickup_date:', e.message);
-    }
+    // ✅ FIX: No more try/catch swallowing errors. If this fails, it rolls back everything!
+    await client.query(
+      'UPDATE patients SET next_pickup_date = $1 WHERE patient_id = $2',
+      [computed_next_pickup, patient_id]
+    );
 
     // ── Remove from defaulters if applicable ──
-    try {
-      await db.query(
-        `UPDATE defaulters SET status = 'returned', resolved_date = CURRENT_TIMESTAMP
-         WHERE patient_id = $1 AND status = 'pending'`,
-        [patient_id]
-      );
-    } catch (e) {
-      console.log('ℹ️ Defaulters update skipped:', e.message);
-    }
+    await client.query(
+      `UPDATE defaulters SET status = 'returned', resolved_date = CURRENT_TIMESTAMP
+       WHERE patient_id = $1 AND status = 'pending'`,
+      [patient_id]
+    );
 
-    // ── Recalculate risk score ──
+    await client.query('COMMIT');
+
+    // Recalculate risk score (happens outside transaction since it's non-fatal)
     await recalculatePatientRisk(patient_id);
 
     res.json({
       success: true,
       message: 'Medication pickup recorded successfully. Risk score updated.',
-      pickup: {
-        pickup_id:          pickup_record.pickup_id,
-        patient_name:       patient.first_name + ' ' + patient.last_name,
-        pickup_date:        pickup_record.pickup_date,
-        next_pickup_date:   pickup_record.next_pickup_date,
-        days_supply:        pickup_record.days_supply,
-        quantity_dispensed: pickup_record.quantity_dispensed,
-        dispensed_by:       nurse_number || null,
-        clinic_number:      clinic_number || null,
-        dispensing_clinic:  dispensing_clinic || null,
-        notes:              pickup_record.notes
-      },
-      patient: {
-        patient_id: patient.patient_id,
-        first_name: patient.first_name,
-        last_name:  patient.last_name
-      }
+      pickup: pickup_record
     });
 
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('❌ Error recording pickup:', error.message);
     res.status(500).json({
       success: false,
-      message: 'Server error while recording pickup',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      message: error.message || 'Server error while recording pickup'
     });
+  } finally {
+    client.release();
   }
 });
 
@@ -277,18 +219,7 @@ router.post('/set-first-pickup', async (req, res) => {
     const { patient_id, first_pickup_date } = req.body;
 
     if (!patient_id || !first_pickup_date) {
-      return res.status(400).json({
-        success: false,
-        message: 'patient_id and first_pickup_date are required'
-      });
-    }
-
-    const patientCheck = await db.query(
-      'SELECT patient_id, first_name, last_name FROM patients WHERE patient_id = $1',
-      [patient_id]
-    );
-    if (patientCheck.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Patient not found' });
+      return res.status(400).json({ success: false, message: 'patient_id and first_pickup_date are required' });
     }
 
     await db.query(
@@ -296,22 +227,9 @@ router.post('/set-first-pickup', async (req, res) => {
       [first_pickup_date, patient_id]
     );
 
-    const patient = patientCheck.rows[0];
-    console.log('✅ First pickup date set for',
-      patient.first_name, patient.last_name, ':', first_pickup_date);
-
-    res.json({
-      success: true,
-      message: 'First pickup date set to ' + first_pickup_date,
-      patient_id,
-      first_pickup_date
-    });
+    res.json({ success: true, message: 'First pickup date set to ' + first_pickup_date });
   } catch (error) {
-    console.error('❌ Error setting first pickup date:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Server error while setting first pickup date'
-    });
+    res.status(500).json({ success: false, message: 'Server error while setting first pickup date' });
   }
 });
 
@@ -323,21 +241,7 @@ router.get('/recent', async (req, res) => {
     const limit  = parseInt(req.query.limit) || 20;
     const result = await db.query(
       `SELECT
-          mp.pickup_id,
-          mp.pickup_date,
-          mp.actual_pickup_date,
-          mp.next_pickup_date,
-          mp.days_supply,
-          mp.quantity_dispensed,
-          mp.dispensed_by,
-          mp.clinic_number,
-          mp.dispensing_clinic,
-          mp.notes,
-          mp.created_at,
-          p.patient_id,
-          p.first_name,
-          p.last_name,
-          p.patient_number
+          mp.*, p.patient_id, p.first_name, p.last_name, p.patient_number
        FROM medication_pickups mp
        JOIN patients p ON mp.patient_id = p.patient_id
        ORDER BY mp.created_at DESC
@@ -346,7 +250,6 @@ router.get('/recent', async (req, res) => {
     );
     res.json({ success: true, count: result.rows.length, pickups: result.rows });
   } catch (error) {
-    console.error('❌ Error fetching recent pickups:', error);
     res.status(500).json({ success: false, message: 'Error fetching recent pickups' });
   }
 });
@@ -359,20 +262,7 @@ router.get('/patient/:patient_id', async (req, res) => {
     const { patient_id } = req.params;
     const result = await db.query(
       `SELECT
-          mp.pickup_id,
-          mp.pickup_date,
-          mp.actual_pickup_date,
-          mp.next_pickup_date,
-          mp.days_supply,
-          mp.quantity_dispensed,
-          mp.dispensed_by,
-          mp.clinic_number,
-          mp.dispensing_clinic,
-          mp.notes,
-          mp.created_at,
-          p.first_name,
-          p.last_name,
-          p.patient_number
+          mp.*, p.first_name, p.last_name, p.patient_number
        FROM medication_pickups mp
        JOIN patients p ON mp.patient_id = p.patient_id
        WHERE mp.patient_id = $1
@@ -381,7 +271,6 @@ router.get('/patient/:patient_id', async (req, res) => {
     );
     res.json({ success: true, count: result.rows.length, pickups: result.rows });
   } catch (error) {
-    console.error('❌ Error fetching patient pickup history:', error);
     res.status(500).json({ success: false, message: 'Error fetching pickup history' });
   }
 });
@@ -395,8 +284,7 @@ router.get('/upcoming', async (req, res) => {
     const result = await db.query(
       `SELECT DISTINCT ON (p.patient_id)
           p.patient_id, p.patient_number, p.first_name, p.last_name, p.phone_number,
-          mp.next_pickup_date,
-          mp.next_pickup_date - CURRENT_DATE AS days_until
+          mp.next_pickup_date, mp.next_pickup_date - CURRENT_DATE AS days_until
        FROM patients p
        JOIN medication_pickups mp ON p.patient_id = mp.patient_id
        WHERE mp.next_pickup_date BETWEEN CURRENT_DATE AND CURRENT_DATE + $1
@@ -405,7 +293,6 @@ router.get('/upcoming', async (req, res) => {
     );
     res.json({ success: true, count: result.rows.length, upcoming: result.rows });
   } catch (error) {
-    console.error('❌ Error fetching upcoming pickups:', error);
     res.status(500).json({ success: false, message: 'Error fetching upcoming pickups' });
   }
 });

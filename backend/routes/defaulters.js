@@ -10,13 +10,13 @@ router.use(verifyToken);
 // ==========================================
 router.get('/', async (req, res) => {
     try {
-        // AUTO-DETECT: Find patients whose next_pickup_date has passed
+        // AUTO-DETECT: Find patients whose next_pickup_date has passed by AT LEAST 3 DAYS
         // but ONLY if they have never been in the defaulters table before
         const missedPatients = await query(`
             SELECT p.patient_id, p.next_pickup_date, p.risk_level,
                    (CURRENT_DATE - p.next_pickup_date) AS days_overdue
             FROM patients p
-            WHERE p.next_pickup_date < CURRENT_DATE
+            WHERE p.next_pickup_date <= CURRENT_DATE - 3
             AND p.is_active = true
             AND p.patient_id NOT IN (
                 SELECT patient_id FROM defaulters
@@ -24,7 +24,7 @@ router.get('/', async (req, res) => {
         `);
 
         for (const patient of missedPatients.rows) {
-            const daysOverdue = parseInt(patient.days_overdue) || 1;
+            const daysOverdue = parseInt(patient.days_overdue) || 3;
             let riskLevel = patient.risk_level || 'Low';
             if (!patient.risk_level || patient.risk_level === 'Low') {
                 if (daysOverdue > 14) riskLevel = 'High';

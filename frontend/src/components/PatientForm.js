@@ -193,11 +193,23 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
     setLoading(true);
     setError(null);
     try {
+      // ✅ COMPILE CHRONIC DISEASES INTO STRING
+      const conditions = [];
+      if (formData.has_hypertension) conditions.push('Hypertension');
+      if (formData.has_diabetes) conditions.push('Diabetes');
+      if (formData.has_tuberculosis) conditions.push('Tuberculosis');
+      if (formData.has_mental_health) conditions.push('Mental Health Condition');
+      if (formData.has_kidney_disease) conditions.push('Kidney Disease');
+      if (formData.other_chronic_condition) conditions.push(formData.other_chronic_condition.trim());
+      
+      const chronic_diseases_string = conditions.join(', ');
+
       await patientsAPI.createPatient({
         ...formData,
         is_new_patient:          isNewPatient,
         emergency_contact_name:  formData.next_of_kin_name,
-        emergency_contact_phone: formData.next_of_kin_phone
+        emergency_contact_phone: formData.next_of_kin_phone,
+        chronic_diseases:        chronic_diseases_string // Send to backend
       });
       setSuccess(true);
       const name = formData.first_name + ' ' + formData.last_name;

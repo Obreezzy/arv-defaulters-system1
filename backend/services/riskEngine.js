@@ -57,7 +57,14 @@ const calculateRiskScore = (patient, daysOverdue, pastDefaults = 0, activeWeathe
         riskFactors.push("Previous Default Record");
     }
 
-    // 5. WEATHER & LOCATION BARRIER (New Addition)
+    // 5. CHRONIC DISEASES (New Addition)
+    // Check if patient has registered comorbidities
+    if (patient.chronic_diseases && patient.chronic_diseases.trim() !== '') {
+        riskScore += 15;
+        riskFactors.push(`Comorbidities Present (${patient.chronic_diseases})`);
+    }
+
+    // 6. WEATHER & LOCATION BARRIER (New Addition)
     // Check if the patient's location matches any active weather alerts (like "Chikanga")
     // Fallback to empty string if location/address is undefined to prevent crashes
     const patientLocation = (patient.location || patient.address || "").toLowerCase();

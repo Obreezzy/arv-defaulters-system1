@@ -6,6 +6,17 @@ import { useNotifications } from '../contexts/NotificationContext';
 function PatientEditForm({ patient, onClose, onSuccess }) {
   const { showToast, addNotification } = useNotifications();
   
+  // ✅ Parse existing chronic diseases to set checkbox states
+  const chronicsStr = (patient.chronic_diseases || '').toLowerCase();
+  
+  // Extract "other" by removing known diseases from the string
+  let otherStr = patient.chronic_diseases || '';
+  ['Hypertension', 'Diabetes', 'Tuberculosis', 'Mental Health Condition', 'Kidney Disease'].forEach(c => {
+    const regex = new RegExp(c + ',?\\s*', 'gi');
+    otherStr = otherStr.replace(regex, '');
+  });
+  otherStr = otherStr.replace(/^,\s*/, '').replace(/,\s*$/, '').trim();
+
   // Pre-fill form with existing patient data
   const [formData, setFormData] = useState({
     patient_number: patient.patient_number || '',
@@ -17,7 +28,6 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
     phone_number: patient.phone_number || patient.phone || '',
     alternative_phone: patient.alternative_phone || '',
     email: patient.email || '',
-    // UPDATED: Pre-fill rural location fields
     district: patient.district || '',
     ward: patient.ward || '',
     village: patient.village || '',
@@ -25,7 +35,14 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
     distance_from_clinic: patient.distance_from_clinic || '',
     arv_regimen: patient.arv_regimen || patient.regimen || '',
     emergency_contact_name: patient.emergency_contact_name || '',
-    emergency_contact_phone: patient.emergency_contact_phone || ''
+    emergency_contact_phone: patient.emergency_contact_phone || '',
+    // ✅ Initialize chronics
+    has_hypertension:         chronicsStr.includes('hypertension'),
+    has_diabetes:             chronicsStr.includes('diabetes'),
+    has_tuberculosis:         chronicsStr.includes('tuberculosis'),
+    has_mental_health:        chronicsStr.includes('mental health'),
+    has_kidney_disease:       chronicsStr.includes('kidney'),
+    other_chronic_condition:  otherStr || ''
   });
 
   const [loading, setLoading] = useState(false);
@@ -33,7 +50,12 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
   const [success, setSuccess] = useState(false);
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
+    const { name, value, type, checked } = e.target;
+
+    if (type === 'checkbox') {
+      setFormData(prev => ({ ...prev, [name]: checked }));
+      return;
+    }
 
     const lettersOnly    = /^[a-zA-Z\s\-'.]*$/;
     const wholeNumberOnly = /^\d*$/;
@@ -66,6 +88,7 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
       setError('Date of birth must be between 1946 and 2018');
     }
   };
+  
   const validateForm = () => {
     const fail = (msg) => { setError(msg); return msg; };
 
@@ -124,13 +147,22 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
     setError(null);
 
     try {
-      console.log('📤 Updating patient data:', formData);
-      console.log('Patient ID:', patient.patient_id || patient.id);
+      // ✅ COMPILE CHRONIC DISEASES INTO STRING FOR UPDATE
+      const conditions = [];
+      if (formData.has_hypertension) conditions.push('Hypertension');
+      if (formData.has_diabetes) conditions.push('Diabetes');
+      if (formData.has_tuberculosis) conditions.push('Tuberculosis');
+      if (formData.has_mental_health) conditions.push('Mental Health Condition');
+      if (formData.has_kidney_disease) conditions.push('Kidney Disease');
+      if (formData.other_chronic_condition) conditions.push(formData.other_chronic_condition.trim());
+      
+      const payload = {
+        ...formData,
+        chronic_diseases: conditions.join(', ')
+      };
 
       const patientId = patient.patient_id || patient.id;
-      const response = await patientsAPI.updatePatient(patientId, formData);
-
-      console.log('✅ Patient updated successfully:', response);
+      const response = await patientsAPI.updatePatient(patientId, payload);
 
       setSuccess(true);
 
@@ -160,22 +192,10 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
       }, 2000);
 
     } catch (err) {
-      console.error('❌ Error updating patient:', err);
-      console.error('Error response:', err.response?.data);
-      
-      const errorMessage = err.response?.data?.message || 
-                          err.response?.data?.error || 
-                          'Failed to update patient. Please try again.';
-      
+      const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Failed to update patient.';
       setError(errorMessage);
       setLoading(false);
-
-      showToast({
-        type: 'error',
-        title: 'Update Failed',
-        message: errorMessage,
-        duration: 5000
-      });
+      showToast({ type: 'error', title: 'Update Failed', message: errorMessage, duration: 5000 });
     }
   };
 
@@ -424,6 +444,33 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
                 <option value="AZT/3TC/NVP">AZT/3TC/NVP (Zidovudine/Lamivudine/Nevirapine)</option>
                 <option value="Other">Other</option>
               </select>
+            </div>
+
+            <div className="form-group" style={{ marginTop: '1rem' }}>
+              <label style={{ marginBottom: '0.75rem', display: 'block', fontWeight: 600 }}>
+                Chronic Conditions (tick all that apply)
+              </label>
+              <div className="checkbox-grid">
+                {[
+                  { name: 'has_hypertension',  label: '❤️ Hypertension' },
+                  { name: 'has_diabetes',       label: '🩸 Diabetes' },
+                  { name: 'has_tuberculosis',   label: '🫁 Tuberculosis (TB)' },
+                  { name: 'has_mental_health',  label: '🧠 Mental Health Condition' },
+                  { name: 'has_kidney_disease', label: '🫘 Kidney Disease' },
+                ].map(({ name, label }) => (
+                  <label key={name} className="checkbox-label">
+                    <input type="checkbox" name={name}
+                      checked={formData[name]} onChange={handleChange} />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="form-group" style={{ marginTop: '0.75rem' }}>
+                <label>Other Chronic Condition</label>
+                <input type="text" name="other_chronic_condition"
+                  value={formData.other_chronic_condition} onChange={handleChange}
+                  placeholder="Specify any other chronic condition" />
+              </div>
             </div>
           </div>
 

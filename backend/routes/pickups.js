@@ -46,6 +46,12 @@ const predictRiskForPatient = (patient, history) => {
   if (age >= 18 && age <= 24) { score += 20; factors.push('High-Risk Age Group (18-24)'); }
   else if (age > 70)          { score += 10; factors.push('Geriatric Vulnerability'); }
 
+  // ✅ ADDED: Chronic Disease Logic
+  if (patient.chronic_diseases && patient.chronic_diseases.trim() !== '') {
+    score += 15; 
+    factors.push(`Comorbidities Present (${patient.chronic_diseases})`);
+  }
+
   score = Math.min(score, 100);
   const label = score >= 50 ? 'High' : score >= 25 ? 'Medium' : 'Low';
   return { score, label, factors };
@@ -56,8 +62,9 @@ const predictRiskForPatient = (patient, history) => {
 // ============================================
 const recalculatePatientRisk = async (patient_id) => {
   try {
+    // ✅ ADDED: chronic_diseases to SELECT query
     const patientRes = await db.query(
-      `SELECT patient_id, date_of_birth, distance_from_clinic
+      `SELECT patient_id, date_of_birth, distance_from_clinic, chronic_diseases
        FROM patients WHERE patient_id = $1`,
       [patient_id]
     );
@@ -227,7 +234,7 @@ router.post('/record', async (req, res) => {
       console.log('ℹ️ Defaulters update skipped:', e.message);
     }
 
-    // ── Recalculate risk score (Option A) ──
+    // ── Recalculate risk score ──
     await recalculatePatientRisk(patient_id);
 
     res.json({

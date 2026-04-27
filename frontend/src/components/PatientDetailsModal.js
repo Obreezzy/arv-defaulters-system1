@@ -95,6 +95,11 @@ function PatientDetailsModal({ patient, onClose, onEdit }) {
                     <label>Status</label>
                     <p>{patient.is_active ? '✅ Active' : '❌ Inactive'}</p>
                     </div>
+                    {/* ✅ Display Chronics here */}
+                    <div className="info-item">
+                    <label>Chronic Conditions</label>
+                    <p>{patient.chronic_diseases || 'None'}</p>
+                    </div>
                 </div>
 
                 <hr className="divider" />

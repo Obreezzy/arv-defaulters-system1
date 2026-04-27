@@ -1,3 +1,4 @@
+// backend/routes/patients.js
 const express = require('express');
 const router = express.Router();
 const { query, getClient } = require('../config/db');
@@ -15,8 +16,9 @@ router.post('/predict', async (req, res) => {
     try {
         await client.query('BEGIN');
 
+        // ✅ UPDATED: Added chronic_diseases to the SELECT query
         const result = await client.query(`
-            SELECT patient_id, date_of_birth, distance_from_clinic, gender, district, ward, village, headman
+            SELECT patient_id, date_of_birth, distance_from_clinic, gender, district, ward, village, headman, chronic_diseases
             FROM patients WHERE is_active = true
         `);
 
@@ -81,13 +83,14 @@ router.get('/', async (req, res) => {
 // 3. CREATE PATIENT
 // ==========================================
 router.post('/', async (req, res) => {
+    // ✅ UPDATED: Destructured chronic_diseases from req.body
     const {
         patient_number, first_name, last_name, date_of_birth, gender,
         phone_number, alternative_phone, email, district, ward, village, headman,
         distance_from_clinic, enrollment_date, arv_regimen,
         pickup_frequency, next_pickup_date, is_new_patient,
         emergency_contact_name, emergency_contact_phone,
-        clinic_number, nurse_number, dispensing_clinic // ✅ Added new clinic fields
+        clinic_number, nurse_number, dispensing_clinic, chronic_diseases 
     } = req.body;
 
     const userId = req.user?.id || req.user?.user_id || req.user?.userId || req.user?.sub || req.user?.ID || null;
@@ -118,6 +121,7 @@ router.post('/', async (req, res) => {
             finalPickupDate = calc.toISOString().split('T')[0];
         }
 
+        // ✅ UPDATED: Added chronic_diseases to INSERT statement and params
         const result = await query(
             `INSERT INTO patients (
                 patient_number, first_name, last_name, date_of_birth, gender,
@@ -125,10 +129,10 @@ router.post('/', async (req, res) => {
                 distance_from_clinic, enrollment_date, arv_regimen,
                 pickup_frequency, next_pickup_date,
                 emergency_contact_name, emergency_contact_phone,
-                created_by, clinic_number, nurse_number, dispensing_clinic
+                created_by, clinic_number, nurse_number, dispensing_clinic, chronic_diseases
             ) VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-                $11,$12,$13,$14,$15,$16,$17,$18,$19,$20, $21,$22,$23
+                $11,$12,$13,$14,$15,$16,$17,$18,$19,$20, $21,$22,$23, $24
             ) RETURNING *`,
             [
                 patient_number || `P-${Date.now()}`, first_name, last_name, date_of_birth, gender,
@@ -136,7 +140,7 @@ router.post('/', async (req, res) => {
                 village || null, headman || null, distance_from_clinic || 0, enrollment_date, arv_regimen || null,
                 freq, finalPickupDate, emergency_contact_name || null, emergency_contact_phone || null,
                 createdByName,
-                clinic_number || null, nurse_number || null, dispensing_clinic || null // ✅ Saving new data
+                clinic_number || null, nurse_number || null, dispensing_clinic || null, chronic_diseases || null
             ]
         );
 
@@ -165,14 +169,17 @@ router.get('/:id', async (req, res) => {
 // 5. UPDATE PATIENT
 // ==========================================
 router.put('/:id', async (req, res) => {
+    // ✅ UPDATED: Destructured chronic_diseases from req.body
     const {
         first_name, last_name, date_of_birth, gender, phone_number,
         alternative_phone, email, district, ward, village, headman, distance_from_clinic,
         arv_regimen, emergency_contact_name, emergency_contact_phone,
-        next_pickup_date, pickup_frequency, clinic_number, nurse_number, dispensing_clinic
+        next_pickup_date, pickup_frequency, clinic_number, nurse_number, dispensing_clinic,
+        chronic_diseases
     } = req.body;
 
     try {
+        // ✅ UPDATED: Added chronic_diseases to UPDATE statement and params
         const result = await query(
             `UPDATE patients SET
                 first_name=$1, last_name=$2, date_of_birth=$3, gender=$4,
@@ -180,14 +187,16 @@ router.put('/:id', async (req, res) => {
                 district=$8, ward=$9, village=$10, headman=$11, distance_from_clinic=$12,
                 arv_regimen=$13, emergency_contact_name=$14,
                 emergency_contact_phone=$15, next_pickup_date=$16,
-                pickup_frequency=$17, clinic_number=$18, nurse_number=$19, dispensing_clinic=$20
-             WHERE patient_id=$21 RETURNING *`,
+                pickup_frequency=$17, clinic_number=$18, nurse_number=$19, dispensing_clinic=$20,
+                chronic_diseases=$21
+             WHERE patient_id=$22 RETURNING *`,
             [
                 first_name, last_name, date_of_birth, gender, phone_number, alternative_phone || null,
                 email || null, district || null, ward || null, village || null, headman || null, distance_from_clinic,
                 arv_regimen || null, emergency_contact_name || null, emergency_contact_phone || null,
                 next_pickup_date || null, pickup_frequency || 30,
                 clinic_number || null, nurse_number || null, dispensing_clinic || null,
+                chronic_diseases || null,
                 req.params.id
             ]
         );
@@ -215,6 +224,12 @@ const predictRisk = (patient, history, activeWeatherAlerts = []) => {
 
     if (age >= 18 && age <= 24) { score += 20; factors.push("High-Risk Age Group (18-24)"); }
     else if (age > 70)          { score += 10; factors.push("Geriatric Vulnerability"); }
+
+    // ✅ NEW: CHRONIC DISEASE LOGIC
+    if (patient.chronic_diseases && patient.chronic_diseases.trim() !== '') {
+        score += 15; 
+        factors.push(`Comorbidities Present (${patient.chronic_diseases})`);
+    }
 
     const patientLocation = `${patient.district || ''} ${patient.ward || ''} ${patient.village || ''} ${patient.headman || ''}`.toLowerCase();
     const isAffectedByWeather = activeWeatherAlerts.some(

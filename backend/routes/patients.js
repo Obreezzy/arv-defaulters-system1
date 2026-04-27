@@ -22,20 +22,11 @@ router.post('/predict', async (req, res) => {
 
         let updatedCount = 0;
         for (const patient of result.rows) {
+            // ✅ FIX: Simplify history check to count past defaulter records
             const historyResult = await client.query(`
-                SELECT
-                    COUNT(*) AS total_pickups,
-                    COUNT(*) FILTER (
-                        WHERE actual_pickup_date > prev_scheduled
-                        AND prev_scheduled IS NOT NULL
-                    ) AS late_pickups
-                FROM (
-                    SELECT
-                        actual_pickup_date,
-                        LAG(next_pickup_date) OVER (ORDER BY actual_pickup_date) AS prev_scheduled
-                    FROM medication_pickups
-                    WHERE patient_id = $1
-                ) sub
+                SELECT COUNT(*) AS late_pickups 
+                FROM defaulters 
+                WHERE patient_id = $1
             `, [patient.patient_id]);
 
             const prediction = predictRisk(patient, historyResult.rows[0], activeWeatherAlerts);
@@ -235,7 +226,7 @@ const predictRisk = (patient, history, activeWeatherAlerts = []) => {
 
     if (latePickups > 2)        { score += 40; factors.push("Chronic Defaulter (Late 3+ times)"); }
     else if (latePickups === 2) { score += 25; factors.push("History of late pickups (2 times)"); }
-    else if (latePickups === 1) { score += 10; factors.push("First-time late pickup"); }
+    else if (latePickups === 1) { score += 10; factors.push("Previous Default Record"); }
 
     if (distance > 25)      { score += 30; factors.push("Extreme Distance (>25km)"); }
     else if (distance > 15) { score += 15; factors.push("Long Distance (>15km)"); }

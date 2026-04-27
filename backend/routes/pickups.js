@@ -37,7 +37,7 @@ const predictRiskForPatient = (patient, history) => {
   } else if (latePickups === 2) {
     score += 25; factors.push('History of late pickups (2 times)');
   } else if (latePickups === 1) {
-    score += 10; factors.push('First-time late pickup');
+    score += 10; factors.push('Previous Default Record');
   }
 
   if (distance > 25)      { score += 30; factors.push('Extreme Distance (>25km)'); }
@@ -69,20 +69,9 @@ const recalculatePatientRisk = async (patient_id) => {
     if (patientRes.rows.length === 0) return;
     const patient = patientRes.rows[0];
 
+    // ✅ FIX: Count history directly from the defaulters table so it never forgets past defaults!
     const historyRes = await db.query(
-      `SELECT
-          COUNT(*) AS total_pickups,
-          COUNT(*) FILTER (
-            WHERE actual_pickup_date > prev_scheduled
-            AND prev_scheduled IS NOT NULL
-          ) AS late_pickups
-       FROM (
-          SELECT
-            actual_pickup_date,
-            LAG(next_pickup_date) OVER (ORDER BY actual_pickup_date) AS prev_scheduled
-          FROM medication_pickups
-          WHERE patient_id = $1
-       ) sub`,
+      `SELECT COUNT(*) AS late_pickups FROM defaulters WHERE patient_id = $1`,
       [patient_id]
     );
 

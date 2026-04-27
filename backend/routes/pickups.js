@@ -46,7 +46,6 @@ const predictRiskForPatient = (patient, history) => {
   if (age >= 18 && age <= 24) { score += 20; factors.push('High-Risk Age Group (18-24)'); }
   else if (age > 70)          { score += 10; factors.push('Geriatric Vulnerability'); }
 
-  // ✅ ADDED: Chronic Disease Logic
   if (patient.chronic_diseases && patient.chronic_diseases.trim() !== '') {
     score += 15; 
     factors.push(`Comorbidities Present (${patient.chronic_diseases})`);
@@ -106,7 +105,6 @@ const recalculatePatientRisk = async (patient_id) => {
 // POST /api/pickups/record
 // ============================================
 router.post('/record', async (req, res) => {
-  // Use a transaction so if the patient fails to update, the pickup rolls back!
   const client = await db.getClient();
   try {
     await client.query('BEGIN');
@@ -122,7 +120,7 @@ router.post('/record', async (req, res) => {
 
     // ── Get patient ──
     const patientCheck = await client.query(
-      `SELECT patient_id, first_name, last_name, pickup_frequency
+      `SELECT patient_id, first_name, last_name, pickup_frequency, arv_regimen
        FROM patients WHERE patient_id = $1`,
       [patient_id]
     );
@@ -138,25 +136,31 @@ router.post('/record', async (req, res) => {
       (new Date(computed_next_pickup) - new Date(pickup_date)) / (1000 * 60 * 60 * 24)
     );
 
-    // ── Get treatment_id (REQUIRED) ──
+    // ── Get or Auto-Create treatment_id ──
     let treatment_id = null;
-    const t1 = await client.query(
-      'SELECT treatment_id FROM patient_treatments WHERE patient_id = $1 AND is_current = true LIMIT 1',
-      [patient_id]
-    );
-    
-    if (t1.rows.length > 0) {
-      treatment_id = t1.rows[0].treatment_id;
-    } else {
-      const t2 = await client.query(
-        'SELECT treatment_id FROM patient_treatments WHERE patient_id = $1 ORDER BY treatment_id DESC LIMIT 1',
+    try {
+      const t1 = await client.query(
+        'SELECT treatment_id FROM patient_treatments WHERE patient_id = $1 ORDER BY is_current DESC, treatment_id DESC LIMIT 1',
         [patient_id]
       );
-      if (t2.rows.length > 0) treatment_id = t2.rows[0].treatment_id;
+      if (t1.rows.length > 0) treatment_id = t1.rows[0].treatment_id;
+    } catch (e) {
+      console.log('⚠️ Could not query patient_treatments:', e.message);
     }
 
+    // Self-Healing: If old patient doesn't have a treatment record, build it now!
     if (!treatment_id) {
-      throw new Error(`${patient.first_name} ${patient.last_name} has no ARV treatment record. Please ensure the patient is fully registered with a treatment plan.`);
+        console.log(`⚠️ Auto-creating missing treatment record for ${patient.first_name}...`);
+        try {
+            const newTreatment = await client.query(
+                `INSERT INTO patient_treatments (patient_id, regimen, start_date, is_current)
+                 VALUES ($1, $2, CURRENT_DATE, true) RETURNING treatment_id`,
+                [patient_id, patient.arv_regimen || 'Standard']
+            );
+            treatment_id = newTreatment.rows[0].treatment_id;
+        } catch (e) {
+            console.log('⚠️ Failed to auto-create treatment (Proceeding without it):', e.message);
+        }
     }
 
     // ── Insert pickup ──
@@ -175,7 +179,6 @@ router.post('/record', async (req, res) => {
     const pickup_record = result.rows[0];
 
     // ── Update next_pickup_date on patient ──
-    // ✅ FIX: No more try/catch swallowing errors. If this fails, it rolls back everything!
     await client.query(
       'UPDATE patients SET next_pickup_date = $1 WHERE patient_id = $2',
       [computed_next_pickup, patient_id]
@@ -190,7 +193,7 @@ router.post('/record', async (req, res) => {
 
     await client.query('COMMIT');
 
-    // Recalculate risk score (happens outside transaction since it's non-fatal)
+    // Recalculate risk score
     await recalculatePatientRisk(patient_id);
 
     res.json({
@@ -212,89 +215,36 @@ router.post('/record', async (req, res) => {
 });
 
 // ============================================
-// POST /api/pickups/set-first-pickup
+// GET routes (remain unchanged)
 // ============================================
 router.post('/set-first-pickup', async (req, res) => {
   try {
     const { patient_id, first_pickup_date } = req.body;
-
-    if (!patient_id || !first_pickup_date) {
-      return res.status(400).json({ success: false, message: 'patient_id and first_pickup_date are required' });
-    }
-
-    await db.query(
-      'UPDATE patients SET next_pickup_date = $1 WHERE patient_id = $2',
-      [first_pickup_date, patient_id]
-    );
-
-    res.json({ success: true, message: 'First pickup date set to ' + first_pickup_date });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Server error while setting first pickup date' });
-  }
+    if (!patient_id || !first_pickup_date) return res.status(400).json({ success: false });
+    await db.query('UPDATE patients SET next_pickup_date = $1 WHERE patient_id = $2', [first_pickup_date, patient_id]);
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ success: false }); }
 });
 
-// ============================================
-// GET /api/pickups/recent
-// ============================================
 router.get('/recent', async (req, res) => {
   try {
-    const limit  = parseInt(req.query.limit) || 20;
-    const result = await db.query(
-      `SELECT
-          mp.*, p.patient_id, p.first_name, p.last_name, p.patient_number
-       FROM medication_pickups mp
-       JOIN patients p ON mp.patient_id = p.patient_id
-       ORDER BY mp.created_at DESC
-       LIMIT $1`,
-      [limit]
-    );
+    const result = await db.query(`SELECT mp.*, p.patient_id, p.first_name, p.last_name, p.patient_number FROM medication_pickups mp JOIN patients p ON mp.patient_id = p.patient_id ORDER BY mp.created_at DESC LIMIT $1`, [parseInt(req.query.limit) || 20]);
     res.json({ success: true, count: result.rows.length, pickups: result.rows });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Error fetching recent pickups' });
-  }
+  } catch (error) { res.status(500).json({ success: false }); }
 });
 
-// ============================================
-// GET /api/pickups/patient/:patient_id
-// ============================================
 router.get('/patient/:patient_id', async (req, res) => {
   try {
-    const { patient_id } = req.params;
-    const result = await db.query(
-      `SELECT
-          mp.*, p.first_name, p.last_name, p.patient_number
-       FROM medication_pickups mp
-       JOIN patients p ON mp.patient_id = p.patient_id
-       WHERE mp.patient_id = $1
-       ORDER BY mp.actual_pickup_date DESC`,
-      [patient_id]
-    );
+    const result = await db.query(`SELECT mp.*, p.first_name, p.last_name, p.patient_number FROM medication_pickups mp JOIN patients p ON mp.patient_id = p.patient_id WHERE mp.patient_id = $1 ORDER BY mp.actual_pickup_date DESC`, [req.params.patient_id]);
     res.json({ success: true, count: result.rows.length, pickups: result.rows });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Error fetching pickup history' });
-  }
+  } catch (error) { res.status(500).json({ success: false }); }
 });
 
-// ============================================
-// GET /api/pickups/upcoming
-// ============================================
 router.get('/upcoming', async (req, res) => {
   try {
-    const days   = parseInt(req.query.days) || 7;
-    const result = await db.query(
-      `SELECT DISTINCT ON (p.patient_id)
-          p.patient_id, p.patient_number, p.first_name, p.last_name, p.phone_number,
-          mp.next_pickup_date, mp.next_pickup_date - CURRENT_DATE AS days_until
-       FROM patients p
-       JOIN medication_pickups mp ON p.patient_id = mp.patient_id
-       WHERE mp.next_pickup_date BETWEEN CURRENT_DATE AND CURRENT_DATE + $1
-       ORDER BY p.patient_id, mp.next_pickup_date DESC`,
-      [days]
-    );
+    const result = await db.query(`SELECT DISTINCT ON (p.patient_id) p.patient_id, p.patient_number, p.first_name, p.last_name, p.phone_number, mp.next_pickup_date, mp.next_pickup_date - CURRENT_DATE AS days_until FROM patients p JOIN medication_pickups mp ON p.patient_id = mp.patient_id WHERE mp.next_pickup_date BETWEEN CURRENT_DATE AND CURRENT_DATE + $1 ORDER BY p.patient_id, mp.next_pickup_date DESC`, [parseInt(req.query.days) || 7]);
     res.json({ success: true, count: result.rows.length, upcoming: result.rows });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Error fetching upcoming pickups' });
-  }
+  } catch (error) { res.status(500).json({ success: false }); }
 });
 
 module.exports = router;

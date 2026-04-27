@@ -7,17 +7,16 @@ const { verifyToken, verifyRole } = require('../middleware/auth');
 
 const router = express.Router();
 
-// All routes require admin authentication
+// ALL routes require the user to be logged in
 router.use(verifyToken);
-router.use(verifyRole(['admin']));
 
 // ============================================
-// ROUTE 1: GET SCHEDULED JOBS STATUS
+// ROUTE 1: GET SCHEDULED JOBS STATUS (Admin Only)
 // ============================================
 
 // GET /api/scheduler/jobs
 // Purpose: Get list of all scheduled jobs and their status
-router.get('/jobs', (req, res) => {
+router.get('/jobs', verifyRole(['admin']), (req, res) => {
     try {
         const jobs = scheduler.getScheduledJobs();
 
@@ -39,7 +38,7 @@ router.get('/jobs', (req, res) => {
 });
 
 // ============================================
-// ROUTE 2: MANUALLY TRIGGER DEFAULTER DETECTION
+// ROUTE 2: MANUALLY TRIGGER DEFAULTER DETECTION (Open to all staff)
 // ============================================
 
 // POST /api/scheduler/trigger/detect-defaulters
@@ -47,7 +46,9 @@ router.get('/jobs', (req, res) => {
 router.post('/trigger/detect-defaulters', async (req, res) => {
     try {
         console.log('Manual trigger: Defaulter Detection');
-        console.log('Triggered by:', req.user.username);
+        // Fallback to 'Unknown User' if username isn't in the token
+        const username = req.user?.username || 'Authorized Staff';
+        console.log('Triggered by:', username);
 
         const result = await scheduler.triggerDefaulterDetection();
 
@@ -68,7 +69,7 @@ router.post('/trigger/detect-defaulters', async (req, res) => {
 });
 
 // ============================================
-// ROUTE 3: MANUALLY TRIGGER REMINDERS
+// ROUTE 3: MANUALLY TRIGGER REMINDERS (Open to all staff)
 // ============================================
 
 // POST /api/scheduler/trigger/send-reminders
@@ -79,7 +80,8 @@ router.post('/trigger/send-reminders', async (req, res) => {
         const reminderDays = days || 3;
 
         console.log(`Manual trigger: Send ${reminderDays}-day reminders`);
-        console.log('Triggered by:', req.user.username);
+        const username = req.user?.username || 'Authorized Staff';
+        console.log('Triggered by:', username);
 
         const result = await scheduler.triggerReminders(reminderDays);
 
@@ -100,12 +102,12 @@ router.post('/trigger/send-reminders', async (req, res) => {
 });
 
 // ============================================
-// ROUTE 4: GET SCHEDULER STATUS
+// ROUTE 4: GET SCHEDULER STATUS (Admin Only)
 // ============================================
 
 // GET /api/scheduler/status
 // Purpose: Get overall scheduler status
-router.get('/status', (req, res) => {
+router.get('/status', verifyRole(['admin']), (req, res) => {
     try {
         const jobs = scheduler.getScheduledJobs();
         const runningJobs = jobs.filter(job => job.running).length;

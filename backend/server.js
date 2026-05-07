@@ -8,7 +8,7 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3001;  // Changed from 5000 — Flask ML API uses 5000
 
 // Middleware
 app.use(cors({
@@ -44,7 +44,7 @@ app.get('/', (req, res) => {
     res.json({
         success: true,
         message: 'Welcome to ARV Defaulters Management System API',
-        version: '1.0.0',
+        version: '2.0.0',
         endpoints: {
             health: '/api/health',
             auth: '/api/auth',
@@ -56,24 +56,24 @@ app.get('/', (req, res) => {
 });
 
 // Import routes
-const authRoutes = require('./routes/auth');
-const patientRoutes = require('./routes/patients');
-const pickupRoutes = require('./routes/pickups');
+const authRoutes      = require('./routes/auth');
+const patientRoutes   = require('./routes/patients');
+const pickupRoutes    = require('./routes/pickups');
 const defaulterRoutes = require('./routes/defaulters');
 const dashboardRoutes = require('./routes/dashboard');
-const smsRoutes = require('./routes/sms');
-const scheduler = require('./services/scheduler');
+const smsRoutes       = require('./routes/sms');
+const scheduler       = require('./services/scheduler');
 const schedulerRoutes = require('./routes/scheduler');
 
 // Use routes
-app.use('/api/auth', authRoutes);
-app.use('/api/patients', patientRoutes);
-app.use('/api/pickups', pickupRoutes);
-app.use('/api/defaulters', defaulterRoutes);
+app.use('/api/auth',      authRoutes);
+app.use('/api/patients',  patientRoutes);
+app.use('/api/pickups',   pickupRoutes);
+app.use('/api/defaulters',defaulterRoutes);
 app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/sms', smsRoutes);
+app.use('/api/sms',       smsRoutes);
 app.use('/api/scheduler', schedulerRoutes);
-app.use('/api/users', require('./routes/users'));
+app.use('/api/users',     require('./routes/users'));
 
 // 404 handler
 app.use((req, res) => {
@@ -87,33 +87,34 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
     console.error('Error occurred:', err.message);
     console.error(err.stack);
-    
     res.status(err.status || 500).json({
         success: false,
         message: err.message || 'Internal server error',
-        ...(process.env.NODE_ENV === 'development' && { 
-            error: err.stack 
-        })
+        ...(process.env.NODE_ENV === 'development' && { error: err.stack })
     });
 });
 
 // Start automated scheduler
 scheduler.startScheduler();
 
+// ── Check ML API is online on startup ────────────────────────────
+const { checkMLHealth } = require('./services/riskEngine');
+checkMLHealth();
+
 // Start server
 app.listen(PORT, () => {
     console.log('\n========================================');
-    console.log('  SERVER STARTED SUCCESSFULLY');
+    console.log('  ARV DEFAULTERS SYSTEM — STARTED');
     console.log('========================================');
-    console.log(`Server running on port: ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV}`);
-    console.log(`Local: http://localhost:${PORT}`);
-    console.log(`Health: http://localhost:${PORT}/api/health`);
+    console.log(`  Node.js API : http://localhost:${PORT}`);
+    console.log(`  ML API      : ${process.env.ML_API_URL || 'http://localhost:5000'}`);
+    console.log(`  Environment : ${process.env.NODE_ENV}`);
+    console.log(`  Health      : http://localhost:${PORT}/api/health`);
     console.log('========================================\n');
     console.log('Press Ctrl+C to stop\n');
 });
 
-// Handle errors
+// Handle port conflict
 app.on('error', (error) => {
     if (error.code === 'EADDRINUSE') {
         console.error(`Port ${PORT} is already in use`);

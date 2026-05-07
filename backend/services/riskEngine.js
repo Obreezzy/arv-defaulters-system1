@@ -1,102 +1,148 @@
 /**
- * 🧠 SMART RISK ENGINE
- * This module calculates a probabilistic risk score for ARV adherence.
- * It uses a Weighted Factor Model commonly used in medical expert systems.
+ * 🧠 SMART RISK ENGINE v2.0 — ML Powered
+ * Calculates ARV default risk using a trained ML ensemble
+ * (Logistic Regression + Random Forest) via Python Flask API.
+ *
+ * Dataset : Chikore Mission Hospital, Chipinge, Manicaland
+ * Models  : Logistic Regression + Random Forest → Stacked Meta-Learner
+ * Author  : Obriel Makamanzi | University of Zimbabwe
  */
 
-// Added 'activeWeatherAlerts' as an optional parameter (defaults to an empty array)
-const calculateRiskScore = (patient, daysOverdue, pastDefaults = 0, activeWeatherAlerts = []) => {
-    let riskScore = 0;
-    let riskFactors = [];
+const axios = require('axios');
 
-    // 1. LATENESS FACTOR (Weight: 40%)
-    // The more days overdue, the higher the immediate risk
-    if (daysOverdue > 30) {
-        riskScore += 40;
-        riskFactors.push("Critically Overdue (>30 days)");
-    } else if (daysOverdue > 14) {
-        riskScore += 30;
-        riskFactors.push("Significantly Overdue (>2 weeks)");
-    } else if (daysOverdue > 7) {
-        riskScore += 20;
-        riskFactors.push("Missed Appointment (>1 week)");
-    } else if (daysOverdue > 0) {
-        riskScore += 10;
-        riskFactors.push("Slightly Delayed");
-    }
+// ── Flask ML API URL ──────────────────────────────────────────────
+// Local development : http://localhost:5000
+// Deployed (Railway): set ML_API_URL in your .env file
+const ML_API_URL = process.env.ML_API_URL || 'http://localhost:5000';
 
-    // 2. DEMOGRAPHIC VULNERABILITY (Weight: 20%)
-    // Young adults (18-24) often face higher social stigma/instability
-    const age = getAge(patient.date_of_birth);
-    if (age >= 18 && age <= 24) {
-        riskScore += 20;
-        riskFactors.push("High-Risk Age Group (18-24)");
-    } else if (age > 65) {
-        riskScore += 10;
-        riskFactors.push("Geriatric Vulnerability");
-    }
 
-    // 3. GEOGRAPHIC BARRIER (Weight: 20%)
-    // Patients living far away are more likely to default due to transport costs
-    const distance = parseFloat(patient.distance_from_clinic || 0);
-    if (distance > 20) {
-        riskScore += 20;
-        riskFactors.push(`Long Distance Commuter (${distance}km)`);
-    } else if (distance > 10) {
-        riskScore += 10;
-        riskFactors.push("Moderate Distance Barrier");
-    }
+// ═══════════════════════════════════════════════════════════════════
+// MAIN: calculateRiskScore
+// ═══════════════════════════════════════════════════════════════════
 
-    // 4. HISTORICAL ADHERENCE (Weight: 20%)
-    // Previous behavior is the best predictor of future behavior
-    if (pastDefaults > 2) {
-        riskScore += 20;
-        riskFactors.push("Chronic History of Defaulting");
-    } else if (pastDefaults > 0) {
-        riskScore += 10;
-        riskFactors.push("Previous Default Record");
-    }
+/**
+ * Calculates ARV default risk score for a single patient.
+ *
+ * @param {Object}   patient             - Patient object from database
+ * @param {number}   daysOverdue         - Days since scheduled pickup
+ * @param {number}   pastDefaults        - Number of past missed pickups
+ * @param {string[]} activeWeatherAlerts - Active weather alert locations
+ * @returns {Object} { score, label, factors }
+ */
+const calculateRiskScore = async (
+    patient,
+    daysOverdue,
+    pastDefaults = 0,
+    activeWeatherAlerts = []
+) => {
+    const payload = buildMLPayload(patient, daysOverdue, pastDefaults);
 
-    // 5. CHRONIC DISEASES (New Addition)
-    // Check if patient has registered comorbidities
-    if (patient.chronic_diseases && patient.chronic_diseases.trim() !== '') {
-        riskScore += 15;
-        riskFactors.push(`Comorbidities Present (${patient.chronic_diseases})`);
-    }
+    const response = await axios.post(`${ML_API_URL}/predict`, payload, {
+        timeout : 8000,
+        headers : { 'Content-Type': 'application/json' }
+    });
 
-    // 6. WEATHER & LOCATION BARRIER (New Addition)
-    // Check if the patient's location matches any active weather alerts (like "Chikanga")
-    // Fallback to empty string if location/address is undefined to prevent crashes
-    const patientLocation = (patient.location || patient.address || "").toLowerCase();
-    
+    const result = response.data;
+
+    // ── Weather alert logic ───────────────────────────────────────
+    // Check if patient's location matches any active weather alerts
+    const patientLocation = (
+        patient.location || patient.address || ''
+    ).toLowerCase();
+
     const isAffectedByWeather = activeWeatherAlerts.some(
         alertLocation => patientLocation.includes(alertLocation.toLowerCase())
     );
 
     if (isAffectedByWeather) {
-        riskScore += 15; // Added a 15% penalty for severe weather conditions
-        riskFactors.push("Active Weather Alert in Area");
+        result.score   = Math.min(100, result.score + 15);
+        result.factors = [...result.factors, 'Active Weather Alert in Area'];
+        if      (result.score >= 75) result.label = 'High';
+        else if (result.score >= 40) result.label = 'Medium';
+        else                         result.label = 'Low';
     }
 
-    // CAP SCORE AT 100
-    riskScore = Math.min(riskScore, 100);
-
-    // DETERMINE RISK LABEL
-    let riskLabel = 'Low';
-    if (riskScore >= 75) riskLabel = 'High';
-    else if (riskScore >= 40) riskLabel = 'Medium';
-
     return {
-        score: riskScore,
-        label: riskLabel,
-        factors: riskFactors
+        score   : result.score,
+        label   : result.label,
+        factors : result.factors
     };
 };
 
-// Helper: Calculate Age
+
+// ═══════════════════════════════════════════════════════════════════
+// BATCH: Score multiple patients at once — for dashboard
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Batch risk calculation for multiple patients.
+ * More efficient than calling calculateRiskScore() in a loop.
+ *
+ * @param {Array} patients - Array of patient objects with days_overdue attached
+ * @returns {Array} [{ patient_id, score, label, factors }]
+ */
+const batchCalculateRisk = async (patients) => {
+    const payload = {
+        patients: patients.map(p => buildMLPayload(
+            p, p.days_overdue || 0, p.past_defaults || 0
+        ))
+    };
+
+    const response = await axios.post(`${ML_API_URL}/batch`, payload, {
+        timeout: 30000
+    });
+
+    return response.data.predictions;
+};
+
+
+// ═══════════════════════════════════════════════════════════════════
+// HEALTH CHECK — call on server startup
+// ═══════════════════════════════════════════════════════════════════
+
+const checkMLHealth = async () => {
+    try {
+        const res = await axios.get(`${ML_API_URL}/health`, { timeout: 5000 });
+        console.log(`✅ ML Risk Engine online — ${res.data.model}`);
+        return true;
+    } catch (err) {
+        console.error('❌ ML Risk Engine offline. Please start the Flask API.');
+        console.error(`   Expected at: ${ML_API_URL}`);
+        console.error(`   Run: cd ml_api && python app.py`);
+        return false;
+    }
+};
+
+
+// ═══════════════════════════════════════════════════════════════════
+// HELPER: Build ML API payload from patient object
+// Maps your exact DB field names to ML API fields
+// ═══════════════════════════════════════════════════════════════════
+
+const buildMLPayload = (patient, daysOverdue, pastDefaults) => ({
+    age                      : getAge(patient.date_of_birth),
+    gender                   : patient.gender || 'F',
+    marital_status           : patient.marital_status || 'Married',
+    distance_from_clinic_km  : parseFloat(patient.distance_from_clinic || 0),
+    who_clinical_stage       : patient.who_clinical_stage || 2,
+    regimen                  : patient.regimen || 'TLD',
+    chronic_conditions       : patient.chronic_diseases || '',
+    past_defaults            : pastDefaults,
+    total_appointments       : patient.total_appointments || 1,
+    days_overdue             : daysOverdue,
+    treatment_supporter      : patient.treatment_supporter ? 1 : 0,
+    years_on_art             : getYearsOnART(patient.art_start_date),
+});
+
+
+// ═══════════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════════
+
+// Calculate age from date of birth
 const getAge = (dobString) => {
     if (!dobString) return 0;
-    const today = new Date();
+    const today     = new Date();
     const birthDate = new Date(dobString);
     let age = today.getFullYear() - birthDate.getFullYear();
     const m = today.getMonth() - birthDate.getMonth();
@@ -106,4 +152,13 @@ const getAge = (dobString) => {
     return age;
 };
 
-module.exports = { calculateRiskScore };
+// Calculate years on ART from start date
+const getYearsOnART = (artStartDate) => {
+    if (!artStartDate) return 2.0;
+    const start = new Date(artStartDate);
+    const now   = new Date();
+    return Math.max(0, (now - start) / (365.25 * 24 * 60 * 60 * 1000));
+};
+
+
+module.exports = { calculateRiskScore, batchCalculateRisk, checkMLHealth };

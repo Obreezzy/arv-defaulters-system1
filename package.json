@@ -1,6 +1,10 @@
 {
+  "scripts": {
+    "start": "node start.js",
+    "dev": "node start.js"
+  },
   "dependencies": {
-    "dotenv": "^17.3.1",
-    "twilio": "^5.13.0"
+    "axios": "^1.16.0",
+    "child_process": "*"
   }
 }

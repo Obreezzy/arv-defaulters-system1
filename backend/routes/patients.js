@@ -2,47 +2,104 @@ const express = require('express');
 const router = express.Router();
 const { query, getClient } = require('../config/db');
 const { verifyToken } = require('../middleware/auth');
+const { calculateRiskScore } = require('../services/riskEngine');
 
 router.use(verifyToken);
 
 // ==========================================
-// 1. 🔮 PREDICT RISK FOR ALL PATIENTS
+// 1. 🔮 PREDICT RISK FOR ALL PATIENTS — ML Powered
 // ==========================================
 router.post('/predict', async (req, res) => {
     const activeWeatherAlerts = req.body.activeWeatherAlerts || [];
-    
+
     const client = await getClient();
     try {
         await client.query('BEGIN');
 
         const result = await client.query(`
-            SELECT patient_id, date_of_birth, distance_from_clinic, gender, district, ward, village, headman, chronic_diseases
+            SELECT 
+                patient_id, date_of_birth, distance_from_clinic, gender,
+                district, ward, village, headman, chronic_diseases,
+                next_pickup_date, arv_regimen, marital_status,
+                treatment_supporter, who_clinical_stage, art_start_date
             FROM patients WHERE is_active = true
         `);
 
         let updatedCount = 0;
-        for (const patient of result.rows) {
-            // ✅ FIX: Simplify history check to count past defaulter records
-            const historyResult = await client.query(`
-                SELECT COUNT(*) AS late_pickups 
-                FROM defaulters 
-                WHERE patient_id = $1
-            `, [patient.patient_id]);
 
-            const prediction = predictRisk(patient, historyResult.rows[0], activeWeatherAlerts);
-            
-            await client.query(`
-                UPDATE patients SET risk_score=$1, risk_level=$2, risk_factors=$3 WHERE patient_id=$4
-            `, [prediction.score, prediction.label, JSON.stringify(prediction.factors), patient.patient_id]);
-            updatedCount++;
+        for (const patient of result.rows) {
+            try {
+                // Get past defaults count for this patient
+                const historyResult = await client.query(`
+                    SELECT COUNT(*) AS past_defaults,
+                           COUNT(*) AS total_appointments
+                    FROM defaulters
+                    WHERE patient_id = $1
+                `, [patient.patient_id]);
+
+                const pastDefaults = parseInt(historyResult.rows[0].past_defaults) || 0;
+                const totalAppointments = parseInt(historyResult.rows[0].total_appointments) || 1;
+
+                // Calculate days overdue
+                const daysOverdue = patient.next_pickup_date
+                    ? Math.max(0, Math.floor(
+                        (new Date() - new Date(patient.next_pickup_date)) / (1000 * 60 * 60 * 24)
+                      ))
+                    : 0;
+
+                // Build patient object matching riskEngine field names
+                const patientForML = {
+                    ...patient,
+                    chronic_diseases       : patient.chronic_diseases || '',
+                    total_appointments     : totalAppointments,
+                    treatment_supporter    : patient.treatment_supporter || false,
+                    who_clinical_stage     : patient.who_clinical_stage || 2,
+                    art_start_date         : patient.art_start_date || null,
+                    regimen                : patient.arv_regimen || 'TLD',
+                    marital_status         : patient.marital_status || 'Married',
+                };
+
+                // Call ML API
+                const prediction = await calculateRiskScore(
+                    patientForML,
+                    daysOverdue,
+                    pastDefaults,
+                    activeWeatherAlerts
+                );
+
+                // Update patient with ML prediction
+                await client.query(`
+                    UPDATE patients
+                    SET risk_score  = $1,
+                        risk_level  = $2,
+                        risk_factors= $3
+                    WHERE patient_id = $4
+                `, [
+                    prediction.score,
+                    prediction.label,
+                    JSON.stringify(prediction.factors),
+                    patient.patient_id
+                ]);
+
+                updatedCount++;
+
+            } catch (patientErr) {
+                // Log individual patient error but continue with others
+                console.error(`⚠️ Risk prediction failed for patient ${patient.patient_id}:`, patientErr.message);
+            }
         }
 
         await client.query('COMMIT');
-        res.json({ success: true, message: `Analyzed ${updatedCount} patients` });
+        res.json({
+            success: true,
+            message: `ML risk analysis completed for ${updatedCount} patients`,
+            model: 'LR + RF Ensemble — Chikore Mission Hospital'
+        });
+
     } catch (err) {
         await client.query('ROLLBACK');
-        console.error("Prediction error:", err);
-        res.status(500).json({ success: false, message: 'Prediction failed' });
+        console.error('Prediction error:', err);
+        res.status(500).json({ success: false, message: 'ML Prediction failed: ' + err.message });
     } finally {
         client.release();
     }
@@ -78,7 +135,8 @@ router.post('/', async (req, res) => {
         distance_from_clinic, enrollment_date, arv_regimen,
         pickup_frequency, next_pickup_date, is_new_patient,
         emergency_contact_name, emergency_contact_phone,
-        clinic_number, nurse_number, dispensing_clinic, chronic_diseases
+        clinic_number, nurse_number, dispensing_clinic, chronic_diseases,
+        marital_status, treatment_supporter, who_clinical_stage, art_start_date
     } = req.body;
 
     const userId = req.user?.id || req.user?.user_id || req.user?.userId || req.user?.sub || req.user?.ID || null;
@@ -116,24 +174,58 @@ router.post('/', async (req, res) => {
                 distance_from_clinic, enrollment_date, arv_regimen,
                 pickup_frequency, next_pickup_date,
                 emergency_contact_name, emergency_contact_phone,
-                created_by, clinic_number, nurse_number, dispensing_clinic, chronic_diseases
+                created_by, clinic_number, nurse_number, dispensing_clinic, chronic_diseases,
+                marital_status, treatment_supporter, who_clinical_stage, art_start_date
             ) VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-                $11,$12,$13,$14,$15,$16,$17,$18,$19,$20, $21,$22,$23, $24
+                $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+                $21,$22,$23,$24,$25,$26,$27,$28
             ) RETURNING *`,
             [
                 patient_number || `P-${Date.now()}`, first_name, last_name, date_of_birth, gender,
-                phone_number, alternative_phone || null, email || null, district || null, ward || null, 
+                phone_number, alternative_phone || null, email || null, district || null, ward || null,
                 village || null, headman || null, distance_from_clinic || 0, enrollment_date, arv_regimen || null,
                 freq, finalPickupDate, emergency_contact_name || null, emergency_contact_phone || null,
                 createdByName,
-                clinic_number || null, nurse_number || null, dispensing_clinic || null, chronic_diseases || null
+                clinic_number || null, nurse_number || null, dispensing_clinic || null, chronic_diseases || null,
+                marital_status || null, treatment_supporter || false,
+                who_clinical_stage || 2, art_start_date || null
             ]
         );
 
         const newPatient = result.rows[0];
 
-        // Fallback-protected treatment creation
+        // Run initial ML risk prediction for new patient
+        try {
+            const initialPrediction = await calculateRiskScore(
+                { ...newPatient, chronic_diseases: chronic_diseases || '' },
+                0,   // 0 days overdue — just registered
+                0,   // 0 past defaults — new patient
+                []
+            );
+
+            await query(`
+                UPDATE patients
+                SET risk_score   = $1,
+                    risk_level   = $2,
+                    risk_factors = $3
+                WHERE patient_id = $4
+            `, [
+                initialPrediction.score,
+                initialPrediction.label,
+                JSON.stringify(initialPrediction.factors),
+                newPatient.patient_id
+            ]);
+
+            newPatient.risk_score   = initialPrediction.score;
+            newPatient.risk_level   = initialPrediction.label;
+            newPatient.risk_factors = initialPrediction.factors;
+
+        } catch (mlErr) {
+            console.warn('⚠️ Initial ML prediction skipped:', mlErr.message);
+        }
+
+        // Create treatment record
         if (arv_regimen) {
             try {
                 await query(
@@ -149,7 +241,7 @@ router.post('/', async (req, res) => {
                         [newPatient.patient_id]
                     );
                 } catch(e) {
-                    console.error('⚠️ Could not auto-create treatment record entirely:', e.message);
+                    console.error('⚠️ Could not auto-create treatment record:', e.message);
                 }
             }
         }
@@ -184,7 +276,7 @@ router.put('/:id', async (req, res) => {
         alternative_phone, email, district, ward, village, headman, distance_from_clinic,
         arv_regimen, emergency_contact_name, emergency_contact_phone,
         next_pickup_date, pickup_frequency, clinic_number, nurse_number, dispensing_clinic,
-        chronic_diseases
+        chronic_diseases, marital_status, treatment_supporter, who_clinical_stage, art_start_date
     } = req.body;
 
     try {
@@ -192,74 +284,75 @@ router.put('/:id', async (req, res) => {
             `UPDATE patients SET
                 first_name=$1, last_name=$2, date_of_birth=$3, gender=$4,
                 phone_number=$5, alternative_phone=$6, email=$7,
-                district=$8, ward=$9, village=$10, headman=$11, distance_from_clinic=$12,
-                arv_regimen=$13, emergency_contact_name=$14,
-                emergency_contact_phone=$15, next_pickup_date=$16,
-                pickup_frequency=$17, clinic_number=$18, nurse_number=$19, dispensing_clinic=$20,
-                chronic_diseases=$21
-             WHERE patient_id=$22 RETURNING *`,
+                district=$8, ward=$9, village=$10, headman=$11,
+                distance_from_clinic=$12, arv_regimen=$13,
+                emergency_contact_name=$14, emergency_contact_phone=$15,
+                next_pickup_date=$16, pickup_frequency=$17,
+                clinic_number=$18, nurse_number=$19, dispensing_clinic=$20,
+                chronic_diseases=$21, marital_status=$22,
+                treatment_supporter=$23, who_clinical_stage=$24, art_start_date=$25
+             WHERE patient_id=$26 RETURNING *`,
             [
-                first_name, last_name, date_of_birth, gender, phone_number, alternative_phone || null,
-                email || null, district || null, ward || null, village || null, headman || null, distance_from_clinic,
-                arv_regimen || null, emergency_contact_name || null, emergency_contact_phone || null,
-                next_pickup_date || null, pickup_frequency || 30,
-                clinic_number || null, nurse_number || null, dispensing_clinic || null,
-                chronic_diseases || null,
+                first_name, last_name, date_of_birth, gender, phone_number,
+                alternative_phone || null, email || null, district || null,
+                ward || null, village || null, headman || null, distance_from_clinic,
+                arv_regimen || null, emergency_contact_name || null,
+                emergency_contact_phone || null, next_pickup_date || null,
+                pickup_frequency || 30, clinic_number || null, nurse_number || null,
+                dispensing_clinic || null, chronic_diseases || null,
+                marital_status || null, treatment_supporter || false,
+                who_clinical_stage || 2, art_start_date || null,
                 req.params.id
             ]
         );
 
-        res.json({ success: true, patient: result.rows[0] });
+        const updatedPatient = result.rows[0];
+
+        // Re-run ML prediction after patient update
+        try {
+            const historyResult = await query(`
+                SELECT COUNT(*) AS past_defaults FROM defaulters WHERE patient_id = $1
+            `, [req.params.id]);
+
+            const pastDefaults = parseInt(historyResult.rows[0].past_defaults) || 0;
+            const daysOverdue  = next_pickup_date
+                ? Math.max(0, Math.floor(
+                    (new Date() - new Date(next_pickup_date)) / (1000 * 60 * 60 * 24)
+                  ))
+                : 0;
+
+            const prediction = await calculateRiskScore(
+                { ...updatedPatient, chronic_diseases: chronic_diseases || '' },
+                daysOverdue,
+                pastDefaults,
+                []
+            );
+
+            await query(`
+                UPDATE patients
+                SET risk_score   = $1,
+                    risk_level   = $2,
+                    risk_factors = $3
+                WHERE patient_id = $4
+            `, [prediction.score, prediction.label, JSON.stringify(prediction.factors), req.params.id]);
+
+            updatedPatient.risk_score   = prediction.score;
+            updatedPatient.risk_level   = prediction.label;
+            updatedPatient.risk_factors = prediction.factors;
+
+        } catch (mlErr) {
+            console.warn('⚠️ ML re-prediction skipped after update:', mlErr.message);
+        }
+
+        res.json({ success: true, patient: updatedPatient });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
 });
 
 // ==========================================
-// 🧠 PREDICTIVE LOGIC
+// HELPER
 // ==========================================
-const predictRisk = (patient, history, activeWeatherAlerts = []) => {
-    let score = 0, factors = [];
-    const distance = isNaN(parseFloat(patient.distance_from_clinic)) ? 0 : parseFloat(patient.distance_from_clinic);
-    const age = getAge(patient.date_of_birth);
-    const latePickups = parseInt(history.late_pickups) || 0;
-
-    if (latePickups > 2)        { score += 40; factors.push("Chronic Defaulter (Late 3+ times)"); }
-    else if (latePickups === 2) { score += 25; factors.push("History of late pickups (2 times)"); }
-    else if (latePickups === 1) { score += 10; factors.push("Previous Default Record"); }
-
-    if (distance > 25)      { score += 30; factors.push("Extreme Distance (>25km)"); }
-    else if (distance > 15) { score += 15; factors.push("Long Distance (>15km)"); }
-
-    if (age >= 18 && age <= 24) { score += 20; factors.push("High-Risk Age Group (18-24)"); }
-    else if (age > 70)          { score += 10; factors.push("Geriatric Vulnerability"); }
-
-    if (patient.chronic_diseases && patient.chronic_diseases.trim() !== '') {
-        score += 15; 
-        factors.push(`Comorbidities Present (${patient.chronic_diseases})`);
-    }
-
-    const patientLocation = `${patient.district || ''} ${patient.ward || ''} ${patient.village || ''} ${patient.headman || ''}`.toLowerCase();
-    const isAffectedByWeather = activeWeatherAlerts.some(
-        alertLocation => patientLocation.includes(alertLocation.toLowerCase())
-    );
-
-    if (isAffectedByWeather) {
-        score += 15; 
-        factors.push("Active Weather/Disaster Alert in Area");
-    }
-
-    score = Math.min(score, 100);
-    let label = score >= 50 ? 'High' : score >= 25 ? 'Medium' : 'Low';
-    return { score, label, factors };
-};
-
-const getAge = (dob) => {
-    if (!dob) return 30;
-    const d = new Date(dob);
-    return isNaN(d.getTime()) ? 30 : new Date().getFullYear() - d.getFullYear();
-};
-
 const parseFactors = (factors) => {
     try {
         if (!factors) return [];

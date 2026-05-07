@@ -28,7 +28,7 @@ const calculateRiskScore = async (
     const payload = buildMLPayload(patient, daysOverdue, pastDefaults);
 
     const response = await axios.post(`${ML_API_URL}/predict`, payload, {
-        timeout : 8000,
+        timeout : 60000,
         headers : { 'Content-Type': 'application/json' }
     });
 
@@ -92,7 +92,7 @@ const batchCalculateRisk = async (patients) => {
 
 const checkMLHealth = async () => {
     try {
-        const res = await axios.get(`${ML_API_URL}/health`, { timeout: 5000 });
+        const res = await axios.get(`${ML_API_URL}/health`, { timeout: 60000 });
         console.log(`✅ ML Risk Engine online — ${res.data.model}`);
         return true;
     } catch (err) {

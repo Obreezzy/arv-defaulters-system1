@@ -1,18 +1,8 @@
-/**
- * 🧠 SMART RISK ENGINE v2.0 — ML Powered
- * Calculates ARV default risk using a trained ML ensemble
- * (Logistic Regression + Random Forest) via Python Flask API.
- *
- * Dataset : Chikore Mission Hospital, Chipinge, Manicaland
- * Models  : Logistic Regression + Random Forest → Stacked Meta-Learner
- * Author  : Obriel Makamanzi | University of Zimbabwe
- */
 
 const axios = require('axios');
 
 // ── Flask ML API URL ──────────────────────────────────────────────
 // Local development : http://localhost:5000
-// Deployed (Railway): set ML_API_URL in your .env file
 const ML_API_URL = process.env.ML_API_URL || 'http://localhost:5000';
 
 

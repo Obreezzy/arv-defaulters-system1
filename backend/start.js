@@ -185,13 +185,6 @@ const setupShutdown = (flaskProcess, nodeProcess) => {
 
 // ── Main ──────────────────────────────────────────────────────────
 const main = async () => {
-    console.log('');
-    console.log(`${c.bold}${c.cyan}╔══════════════════════════════════════════╗${c.reset}`);
-    console.log(`${c.bold}${c.cyan}║   ARV Defaulters Management System  v2   ║${c.reset}`);
-    console.log(`${c.bold}${c.cyan}║   Chikore Mission Hospital               ║${c.reset}`);
-    console.log(`${c.bold}${c.cyan}║   University of Zimbabwe — R223816F      ║${c.reset}`);
-    console.log(`${c.bold}${c.cyan}╚══════════════════════════════════════════╝${c.reset}`);
-    console.log('');
 
     try {
         // 1. Start Flask first — Node depends on it for ML predictions

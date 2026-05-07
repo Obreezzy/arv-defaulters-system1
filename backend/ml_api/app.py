@@ -1,26 +1,17 @@
-"""
-🏥 ARV Defaulter Prediction — Flask ML API
-Author : Obriel Makamanzi | University of Zimbabwe
-Purpose: Wraps the trained LR + RF ensemble model and exposes
-         a /predict endpoint that replaces riskEngine.js
-"""
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import pandas as pd
-import numpy as np
 import joblib
 import json
 import os
 import warnings
 warnings.filterwarnings('ignore')
 
-app = Flask(__name__)
-CORS(app)  # Allow requests from Node.js backend
+app  = Flask(__name__)
+CORS(app)
 
 # ── Load saved models ─────────────────────────────────────────────
-BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
-MODEL_DIR  = os.path.join(BASE_DIR, 'arv_model_output')
+BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
+MODEL_DIR = os.path.join(BASE_DIR, 'arv_model_output')
 
 print('Loading models...')
 lr           = joblib.load(os.path.join(MODEL_DIR, 'logistic_regression.pkl'))
@@ -31,17 +22,16 @@ scaler       = joblib.load(os.path.join(MODEL_DIR, 'scaler.pkl'))
 with open(os.path.join(MODEL_DIR, 'model_config.json')) as f:
     config = json.load(f)
 
-FEATURES   = config['features']
-THRESHOLD  = config['threshold']
+FEATURES  = config['features']
+THRESHOLD = config['threshold']
 print(f'✅ Models loaded! Threshold: {THRESHOLD:.2f}')
 
 
-# ── Feature engineering ───────────────────────────────────────────
-def build_features(patient: dict) -> pd.DataFrame:
+# ── Build feature vector as plain Python list ─────────────────────
+def build_feature_vector(patient: dict) -> list:
     """
-    Converts a raw patient dict (from your Node.js backend)
-    into the feature vector the model expects.
-    Matches exactly what engineer_features() does in the notebook.
+    Converts patient dict to an ordered list matching FEATURES.
+    Uses only plain Python — no pandas, no numpy needed.
     """
     days      = float(patient.get('days_overdue', 0))
     age       = float(patient.get('age', 30))
@@ -56,32 +46,24 @@ def build_features(patient: dict) -> pd.DataFrame:
     who       = float(patient.get('who_clinical_stage', 2))
     gender    = str(patient.get('gender', 'F'))
 
-    features = {
-        # Lateness — 3-day system threshold
+    # Build feature dict matching exact order from notebook
+    feat = {
         'days_overdue'            : days,
         'overdue_critical'        : int(days > 30),
         'overdue_high'            : int(14 < days <= 30),
         'overdue_moderate'        : int(3 < days <= 13),
         'overdue_flag'            : int(days >= 3),
-
-        # Age / demographics
         'age'                     : age,
         'age_high_risk'           : int(18 <= age <= 24),
         'age_senior'              : int(age > 65),
         'is_male'                 : int(gender.upper() == 'M'),
-
-        # Distance
         'distance_from_clinic_km' : dist,
         'distance_risk'           : min(dist / 50, 1.0),
         'is_far'                  : int(dist > 20),
-
-        # Past behaviour — strongest predictor
         'past_defaults'           : past_def,
         'default_rate'            : past_def / tot_appt,
         'is_chronic_defaulter'    : int(past_def > 2),
         'total_appointments'      : tot_appt,
-
-        # Clinical
         'who_clinical_stage'      : who,
         'has_chronic'             : int(chronic.strip() != ''),
         'has_tb'                  : int('tuberculosis' in chronic.lower()),
@@ -92,19 +74,16 @@ def build_features(patient: dict) -> pd.DataFrame:
                                         int('hypertension' in chronic.lower()),
                                         int('diabetes'     in chronic.lower())
                                     ]),
-
-        # Social support — uniquely Zimbabwean
         'treatment_supporter'     : supporter,
         'is_single'               : int(marital.lower() == 'single'),
         'is_married'              : int(marital.lower() == 'married'),
-
-        # Regimen
         'on_legacy_regimen'       : int(regimen.upper() == 'AZT/3TC/NVP'),
         'on_tld'                  : int(regimen.upper() == 'TLD'),
         'years_on_art'            : years_art,
     }
 
-    return pd.DataFrame([features])[FEATURES]
+    # Return as ordered list matching FEATURES
+    return [feat[f] for f in FEATURES]
 
 
 # ── Risk label ────────────────────────────────────────────────────
@@ -114,125 +93,140 @@ def get_label(score: int) -> str:
     return 'Low'
 
 
+# ── Build human-readable risk factors ────────────────────────────
+def build_factors(feat_dict: dict) -> list:
+    risk_increasing = []
+    risk_reducing   = []
+
+    if feat_dict['overdue_critical']:
+        risk_increasing.append('Critically overdue (>30 days)')
+    elif feat_dict['overdue_high']:
+        risk_increasing.append('Significantly overdue (14-30 days)')
+    elif feat_dict['overdue_moderate']:
+        risk_increasing.append('Moderately overdue (3-13 days)')
+
+    if feat_dict['is_chronic_defaulter']:
+        risk_increasing.append('Chronic defaulter history (3+ past defaults)')
+    elif feat_dict['past_defaults'] > 0:
+        risk_increasing.append(f'Previous default record ({int(feat_dict["past_defaults"])} times)')
+
+    if feat_dict['is_far']:
+        risk_increasing.append(f'Far from clinic ({feat_dict["distance_from_clinic_km"]:.0f}km)')
+
+    if feat_dict['age_high_risk']:
+        risk_increasing.append('High-risk age group (18-24 years)')
+
+    if feat_dict['is_single']:
+        risk_increasing.append('Single — limited household support')
+
+    if not feat_dict['treatment_supporter']:
+        risk_increasing.append('No treatment supporter assigned')
+
+    if feat_dict['has_tb']:
+        risk_increasing.append('Tuberculosis comorbidity')
+    if feat_dict['has_htn']:
+        risk_increasing.append('Hypertension comorbidity')
+    if feat_dict['has_diabetes']:
+        risk_increasing.append('Diabetes comorbidity')
+
+    if feat_dict['on_legacy_regimen']:
+        risk_increasing.append('On legacy ARV regimen (AZT/3TC/NVP)')
+
+    if feat_dict['treatment_supporter']:
+        risk_reducing.append('Has treatment supporter')
+    if feat_dict['is_married']:
+        risk_reducing.append('Married — household support available')
+    if feat_dict['on_tld']:
+        risk_reducing.append('On TLD regimen (well tolerated)')
+    if feat_dict['years_on_art'] > 3:
+        risk_reducing.append(f'Established on ART ({feat_dict["years_on_art"]:.1f} years)')
+
+    all_factors = (
+        [f'↑ {f}' for f in risk_increasing[:4]] +
+        [f'↓ {f}' for f in risk_reducing[:2]]
+    )
+    return all_factors or ['Insufficient data to determine specific factors']
+
+
+# ── Helper: patient dict to feature dict ─────────────────────────
+def build_feat_dict(patient: dict) -> dict:
+    days      = float(patient.get('days_overdue', 0))
+    age       = float(patient.get('age', 30))
+    dist      = float(patient.get('distance_from_clinic_km', 10))
+    past_def  = float(patient.get('past_defaults', 0))
+    tot_appt  = max(float(patient.get('total_appointments', 1)), 1)
+    chronic   = str(patient.get('chronic_conditions', ''))
+    years_art = float(patient.get('years_on_art', 2.0))
+    regimen   = str(patient.get('regimen', 'TLD'))
+    supporter = int(patient.get('treatment_supporter', 1))
+    marital   = str(patient.get('marital_status', 'Married'))
+    who       = float(patient.get('who_clinical_stage', 2))
+    gender    = str(patient.get('gender', 'F'))
+
+    return {
+        'days_overdue'            : days,
+        'overdue_critical'        : int(days > 30),
+        'overdue_high'            : int(14 < days <= 30),
+        'overdue_moderate'        : int(3 < days <= 13),
+        'overdue_flag'            : int(days >= 3),
+        'age'                     : age,
+        'age_high_risk'           : int(18 <= age <= 24),
+        'age_senior'              : int(age > 65),
+        'is_male'                 : int(gender.upper() == 'M'),
+        'distance_from_clinic_km' : dist,
+        'distance_risk'           : min(dist / 50, 1.0),
+        'is_far'                  : int(dist > 20),
+        'past_defaults'           : past_def,
+        'default_rate'            : past_def / tot_appt,
+        'is_chronic_defaulter'    : int(past_def > 2),
+        'total_appointments'      : tot_appt,
+        'who_clinical_stage'      : who,
+        'has_chronic'             : int(chronic.strip() != ''),
+        'has_tb'                  : int('tuberculosis' in chronic.lower()),
+        'has_htn'                 : int('hypertension' in chronic.lower()),
+        'has_diabetes'            : int('diabetes' in chronic.lower()),
+        'chronic_count'           : sum([
+                                        int('tuberculosis' in chronic.lower()),
+                                        int('hypertension' in chronic.lower()),
+                                        int('diabetes'     in chronic.lower())
+                                    ]),
+        'treatment_supporter'     : supporter,
+        'is_single'               : int(marital.lower() == 'single'),
+        'is_married'              : int(marital.lower() == 'married'),
+        'on_legacy_regimen'       : int(regimen.upper() == 'AZT/3TC/NVP'),
+        'on_tld'                  : int(regimen.upper() == 'TLD'),
+        'years_on_art'            : years_art,
+    }
+
+
 # ── /predict endpoint ─────────────────────────────────────────────
 @app.route('/predict', methods=['POST'])
 def predict():
-    """
-    Accepts patient JSON from Node.js backend.
-    Returns { score, label, factors, probability }
-    — exact same shape as calculateRiskScore() in riskEngine.js
-    """
     try:
         patient = request.get_json()
         if not patient:
             return jsonify({'error': 'No patient data provided'}), 400
 
-        # Build feature vector
-        X_in    = build_features(patient)
-        X_in_sc = scaler.transform(X_in)
+        # Build ordered feature list
+        X_raw   = build_feature_vector(patient)
+        X_sc    = scaler.transform([X_raw])
 
-        # Get predictions from both models
-        p_lr = lr.predict_proba(X_in_sc)[:, 1][0]
-        p_rf = rf.predict_proba(X_in.values)[:, 1][0]
+        # Predict
+        p_lr    = lr.predict_proba(X_sc)[0][1]
+        p_rf    = rf.predict_proba([X_raw])[0][1]
+        prob    = meta_learner.predict_proba([[p_lr, p_rf]])[0][1]
 
-        # Stack through meta-learner
-        probability = meta_learner.predict_proba(
-            np.array([[p_lr, p_rf]])
-        )[:, 1][0]
-
-        score = round(float(probability) * 100)
-        label = get_label(score)
-
-        # Risk factors — which features deviate most from average
-        feat_means = X_in.iloc[0]
-        risk_factors = []
-
-        # Map feature names to human-readable labels
-        factor_labels = {
-            'days_overdue'            : 'Days overdue',
-            'overdue_critical'        : 'Critically overdue (>30 days)',
-            'overdue_high'            : 'Significantly overdue (14-30 days)',
-            'overdue_moderate'        : 'Moderately overdue (3-13 days)',
-            'overdue_flag'            : 'Flagged (3+ days overdue)',
-            'age_high_risk'           : 'High-risk age group (18-24)',
-            'age_senior'              : 'Elderly patient (>65)',
-            'distance_from_clinic_km' : f'Distance from clinic ({feat_means["distance_from_clinic_km"]:.0f}km)',
-            'is_far'                  : 'Long distance from clinic (>20km)',
-            'is_very_far'             : 'Very far from clinic (>30km)',
-            'default_rate'            : 'High historical default rate',
-            'is_chronic_defaulter'    : 'Chronic defaulter (3+ past defaults)',
-            'has_chronic'             : 'Has chronic condition',
-            'has_tb'                  : 'Tuberculosis comorbidity',
-            'has_htn'                 : 'Hypertension comorbidity',
-            'has_diabetes'            : 'Diabetes comorbidity',
-            'treatment_supporter'     : 'Has treatment supporter',
-            'is_single'               : 'Single (no household support)',
-            'on_legacy_regimen'       : 'Legacy regimen (AZT/3TC/NVP)',
-            'who_clinical_stage'      : f'WHO Clinical Stage {int(feat_means["who_clinical_stage"])}',
-        }
-
-        # Determine top risk factors based on feature values
-        risk_increasing = []
-        risk_reducing   = []
-
-        # Check each key risk flag
-        if feat_means['overdue_critical']:
-            risk_increasing.append('Critically overdue (>30 days)')
-        elif feat_means['overdue_high']:
-            risk_increasing.append('Significantly overdue (14-30 days)')
-        elif feat_means['overdue_moderate']:
-            risk_increasing.append('Moderately overdue (3-13 days)')
-
-        if feat_means['is_chronic_defaulter']:
-            risk_increasing.append('Chronic defaulter history (3+ past defaults)')
-        elif feat_means['past_defaults'] > 0:
-            risk_increasing.append(f'Previous default record ({int(feat_means["past_defaults"])} times)')
-
-        if feat_means['is_far']:
-            risk_increasing.append(f'Far from clinic ({feat_means["distance_from_clinic_km"]:.0f}km)')
-
-        if feat_means['age_high_risk']:
-            risk_increasing.append('High-risk age group (18-24 years)')
-
-        if feat_means['is_single']:
-            risk_increasing.append('Single — limited household support')
-
-        if not feat_means['treatment_supporter']:
-            risk_increasing.append('No treatment supporter assigned')
-
-        if feat_means['has_tb']:
-            risk_increasing.append('Tuberculosis comorbidity')
-        if feat_means['has_htn']:
-            risk_increasing.append('Hypertension comorbidity')
-        if feat_means['has_diabetes']:
-            risk_increasing.append('Diabetes comorbidity')
-
-        if feat_means['on_legacy_regimen']:
-            risk_increasing.append('On legacy ARV regimen (AZT/3TC/NVP)')
-
-        # Protective factors
-        if feat_means['treatment_supporter']:
-            risk_reducing.append('Has treatment supporter')
-        if feat_means['is_married']:
-            risk_reducing.append('Married — household support available')
-        if feat_means['on_tld']:
-            risk_reducing.append('On TLD regimen (well tolerated)')
-        if feat_means['years_on_art'] > 3:
-            risk_reducing.append(f'Established on ART ({feat_means["years_on_art"]:.1f} years)')
-
-        # Combine — risk increasing first, then reducing
-        all_factors = (
-            [f'↑ {f}' for f in risk_increasing[:4]] +
-            [f'↓ {f}' for f in risk_reducing[:2]]
-        ) or ['Insufficient data to determine specific factors']
+        score   = round(float(prob) * 100)
+        label   = get_label(score)
+        factors = build_factors(build_feat_dict(patient))
 
         return jsonify({
-            'score'       : score,
-            'label'       : label,
-            'factors'     : all_factors,
-            'probability' : round(float(probability), 4),
-            'model'       : 'LR+RF Ensemble v1.0.0',
-            'threshold'   : THRESHOLD
+            'score'      : score,
+            'label'      : label,
+            'factors'    : factors,
+            'probability': round(float(prob), 4),
+            'model'      : 'LR+RF Ensemble v1.0.0',
+            'threshold'  : THRESHOLD
         })
 
     except Exception as e:
@@ -245,18 +239,14 @@ def health():
     return jsonify({
         'status'  : 'ok',
         'model'   : 'ARV Defaulter Prediction v1.0.0',
-        'dataset' : 'Chikore Mission Hospital, Chipinge',
+        'dataset' : 'Chinyamukwakwa Clinic',
         'features': len(FEATURES)
     })
 
 
-# ── /batch endpoint — predict multiple patients at once ───────────
+# ── /batch endpoint ───────────────────────────────────────────────
 @app.route('/batch', methods=['POST'])
 def batch_predict():
-    """
-    Accepts a list of patients and returns predictions for all.
-    Useful for dashboard bulk risk assessment.
-    """
     try:
         data     = request.get_json()
         patients = data.get('patients', [])
@@ -265,12 +255,12 @@ def batch_predict():
 
         results = []
         for patient in patients:
-            X_in    = build_features(patient)
-            X_in_sc = scaler.transform(X_in)
-            p_lr    = lr.predict_proba(X_in_sc)[:, 1][0]
-            p_rf    = rf.predict_proba(X_in.values)[:, 1][0]
-            prob    = meta_learner.predict_proba(np.array([[p_lr, p_rf]]))[:, 1][0]
-            score   = round(float(prob) * 100)
+            X_raw = build_feature_vector(patient)
+            X_sc  = scaler.transform([X_raw])
+            p_lr  = lr.predict_proba(X_sc)[0][1]
+            p_rf  = rf.predict_proba([X_raw])[0][1]
+            prob  = meta_learner.predict_proba([[p_lr, p_rf]])[0][1]
+            score = round(float(prob) * 100)
             results.append({
                 'patient_id' : patient.get('patient_id', 'unknown'),
                 'score'      : score,

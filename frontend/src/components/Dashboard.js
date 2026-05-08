@@ -103,18 +103,35 @@ function Dashboard({ onNavigate, currentUser }) {
         patientsAPI.getAllPatients(),
         defaultersAPI.getAllDefaulters()
       ]);
+      
       const patients   = patientsRes.patients   || patientsRes.data   || [];
       const defaulters = defaultersRes.defaulters || defaultersRes.data || [];
-      const activePatients      = patients.filter(p => p.is_active !== false).length;
-      const predictedHighRisk   = patients.filter(p => p.risk_level === 'High').length;
-      const predictedMediumRisk = patients.filter(p => p.risk_level === 'Medium').length;
+      
+      // Active patients (non-defaulters)
+      const activePatients = patients.filter(p => p.is_active !== false).length;
+
+      // FIX: Count risk levels across BOTH active patients and current defaulters
+      const predictedHighRisk = 
+        patients.filter(p => p.risk_level?.toLowerCase() === 'high').length +
+        defaulters.filter(d => d.risk_level?.toLowerCase() === 'high').length;
+
+      const predictedMediumRisk = 
+        patients.filter(p => p.risk_level?.toLowerCase() === 'medium').length +
+        defaulters.filter(d => d.risk_level?.toLowerCase() === 'medium').length;
+
+      // Total count includes everyone (active + defaulters)
+      const totalSystemPatients = patients.length + defaulters.length;
+
       setStats({
-        totalPatients: patients.length, activePatients,
+        totalPatients: totalSystemPatients, 
+        activePatients: activePatients + defaulters.length,
         activeDefaulters: defaulters.length,
-        highRisk: predictedHighRisk, mediumRisk: predictedMediumRisk,
-        adherenceRate: patients.length > 0
-          ? Math.round(((activePatients - defaulters.length) / activePatients) * 100) : 0
+        highRisk: predictedHighRisk, 
+        mediumRisk: predictedMediumRisk,
+        adherenceRate: (activePatients + defaulters.length) > 0
+          ? Math.round((activePatients / (activePatients + defaulters.length)) * 100) : 0
       });
+      
       setLoading(false);
     } catch (err) {
       console.error('Error loading dashboard:', err);
@@ -149,11 +166,27 @@ function Dashboard({ onNavigate, currentUser }) {
 
   const riskChartData = {
     labels: ['High Risk', 'Medium Risk', 'Low Risk'],
-    datasets: [{ data: [stats.highRisk, stats.mediumRisk, Math.max(0, stats.totalPatients - (stats.highRisk + stats.mediumRisk))], backgroundColor: ['#ef4444', '#f59e0b', '#10b981'], borderWidth: 0 }]
+    datasets: [{ 
+        data: [
+            stats.highRisk, 
+            stats.mediumRisk, 
+            Math.max(0, stats.totalPatients - (stats.highRisk + stats.mediumRisk))
+        ], 
+        backgroundColor: ['#ef4444', '#f59e0b', '#10b981'], 
+        borderWidth: 0 
+    }]
   };
+
   const adherenceChartData = {
     labels: ['Adherent', 'Defaulting'],
-    datasets: [{ data: [Math.max(0, stats.activePatients - stats.activeDefaulters), stats.activeDefaulters], backgroundColor: ['#10b981', '#ef4444'], borderWidth: 0 }]
+    datasets: [{ 
+        data: [
+            Math.max(0, stats.activePatients - stats.activeDefaulters), 
+            stats.activeDefaulters
+        ], 
+        backgroundColor: ['#10b981', '#ef4444'], 
+        borderWidth: 0 
+    }]
   };
 
   return (

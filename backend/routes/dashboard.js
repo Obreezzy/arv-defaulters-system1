@@ -35,7 +35,9 @@ router.get('/overview', async (req, res) => {
             getRecentActivity(10)
         ]);
 
-        // Calculate key metrics
+        // Calculate adherence rate: (Active Non-Defaulters / Total Active)
+        // We use patientStats.active_patients (which includes non-defaulters) 
+        // and defaulterStats.active_defaulters.
         const adherenceRate = calculateAdherenceRate(
             patientStats.active_patients,
             defaulterStats.active_defaulters
@@ -51,7 +53,9 @@ router.get('/overview', async (req, res) => {
                     active_defaulters: defaulterStats.active_defaulters,
                     adherence_rate: adherenceRate,
                     upcoming_pickups_7days: upcomingPickups.length,
-                    high_risk_defaulters: defaulterStats.high_risk
+                    // Combined High Risk count for the summary banner
+                    high_risk_total: (parseInt(patientStats.high_risk_patients) || 0) + 
+                                   (parseInt(defaulterStats.high_risk) || 0)
                 },
                 patients: patientStats,
                 pickups: pickupStats,
@@ -76,27 +80,17 @@ router.get('/overview', async (req, res) => {
 // ROUTE 2: GET PATIENT STATISTICS
 // ============================================
 
-// GET /api/dashboard/patients
-// Purpose: Get detailed patient statistics
 router.get('/patients', async (req, res) => {
     try {
-        console.log('📊 Fetching patient statistics');
-
         const stats = await getPatientStatistics();
-
         res.json({
             success: true,
             message: 'Patient statistics retrieved successfully',
             stats: stats
         });
-
     } catch (error) {
         console.error('❌ Error fetching patient statistics:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching patient statistics',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+        res.status(500).json({ success: false, message: 'Error fetching patient statistics' });
     }
 });
 
@@ -104,21 +98,16 @@ router.get('/patients', async (req, res) => {
 // ROUTE 3: GET DEFAULTER TRENDS
 // ============================================
 
-// GET /api/dashboard/defaulter-trends
-// Purpose: Get defaulter trends over time
 router.get('/defaulter-trends', async (req, res) => {
     try {
         const months = parseInt(req.query.months) || 6;
-
-        console.log(`📈 Fetching defaulter trends (${months} months)`);
-
         const trends = await query(
             `SELECT 
                 TO_CHAR(flagged_date, 'YYYY-MM') as month,
                 COUNT(*) as total_defaulters,
-                COUNT(*) FILTER (WHERE risk_level = 'high') as high_risk,
-                COUNT(*) FILTER (WHERE risk_level = 'medium') as medium_risk,
-                COUNT(*) FILTER (WHERE risk_level = 'low') as low_risk,
+                COUNT(*) FILTER (WHERE risk_level ILIKE 'high') as high_risk,
+                COUNT(*) FILTER (WHERE risk_level ILIKE 'medium') as medium_risk,
+                COUNT(*) FILTER (WHERE risk_level ILIKE 'low') as low_risk,
                 COUNT(*) FILTER (WHERE status = 'returned') as returned,
                 AVG(days_overdue) as avg_days_overdue
              FROM defaulters
@@ -136,14 +125,9 @@ router.get('/defaulter-trends', async (req, res) => {
                 avg_days_overdue: Math.round(parseFloat(row.avg_days_overdue) || 0)
             }))
         });
-
     } catch (error) {
         console.error('❌ Error fetching defaulter trends:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching defaulter trends',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+        res.status(500).json({ success: false, message: 'Error fetching trends' });
     }
 });
 
@@ -151,102 +135,40 @@ router.get('/defaulter-trends', async (req, res) => {
 // ROUTE 4: GET URGENT ACTIONS
 // ============================================
 
-// GET /api/dashboard/urgent-actions
-// Purpose: Get list of urgent actions needed
 router.get('/urgent-actions', async (req, res) => {
     try {
-        console.log('🚨 Fetching urgent actions');
-
-        // High risk defaulters needing immediate follow-up
         const highRiskDefaulters = await query(
-            `SELECT 
-                d.defaulter_id, d.days_overdue,
-                p.patient_id, p.patient_number, p.first_name, p.last_name,
-                p.phone_number,
-                COALESCE(
-                    (SELECT COUNT(*) FROM followup_actions fa 
-                     WHERE fa.defaulter_id = d.defaulter_id), 0
-                ) as followup_count
-             FROM defaulters d
-             JOIN patients p ON d.patient_id = p.patient_id
-             WHERE d.status = 'pending'
-             AND d.risk_level = 'high'
-             ORDER BY d.days_overdue DESC
-             LIMIT 20`
+            `SELECT d.defaulter_id, d.days_overdue, p.patient_id, p.patient_number, 
+             p.first_name, p.last_name, p.phone_number
+             FROM defaulters d JOIN patients p ON d.patient_id = p.patient_id
+             WHERE d.status = 'pending' AND d.risk_level ILIKE 'high'
+             ORDER BY d.days_overdue DESC LIMIT 20`
         );
 
-        // Patients with pickups today
         const pickupsToday = await query(
-            `SELECT 
-                p.patient_id, p.patient_number, p.first_name, p.last_name,
-                p.phone_number, mp.next_pickup_date
-             FROM patients p
-             JOIN medication_pickups mp ON p.patient_id = mp.patient_id
-             WHERE mp.next_pickup_date = CURRENT_DATE
-             AND p.is_active = true
-             AND NOT EXISTS (
-                 SELECT 1 FROM medication_pickups mp2
-                 WHERE mp2.patient_id = p.patient_id
-                 AND mp2.actual_pickup_date = CURRENT_DATE
-             )`
+            `SELECT p.patient_id, p.patient_number, p.first_name, p.last_name, p.phone_number, mp.next_pickup_date
+             FROM patients p JOIN medication_pickups mp ON p.patient_id = mp.patient_id
+             WHERE mp.next_pickup_date = CURRENT_DATE AND p.is_active = true
+             AND NOT EXISTS (SELECT 1 FROM medication_pickups mp2 WHERE mp2.patient_id = p.patient_id AND mp2.actual_pickup_date = CURRENT_DATE)`
         );
 
-        // Patients never picked up (registered but no pickups)
         const neverPickedUp = await query(
-            `SELECT 
-                p.patient_id, p.patient_number, p.first_name, p.last_name,
-                p.phone_number, p.enrollment_date,
-                CURRENT_DATE - p.enrollment_date as days_since_enrollment
-             FROM patients p
-             WHERE NOT EXISTS (
-                 SELECT 1 FROM medication_pickups mp
-                 WHERE mp.patient_id = p.patient_id
-             )
-             AND p.enrollment_date < CURRENT_DATE - 7
-             AND p.is_active = true
-             ORDER BY p.enrollment_date ASC
-             LIMIT 10`
+            `SELECT p.patient_id, p.patient_number, p.first_name, p.last_name, p.phone_number, p.enrollment_date
+             FROM patients p WHERE NOT EXISTS (SELECT 1 FROM medication_pickups mp WHERE mp.patient_id = p.patient_id)
+             AND p.enrollment_date < CURRENT_DATE - 7 AND p.is_active = true
+             ORDER BY p.enrollment_date ASC LIMIT 10`
         );
 
         res.json({
             success: true,
-            message: 'Urgent actions retrieved successfully',
             urgent_actions: {
-                high_risk_defaulters: highRiskDefaulters.rows.map(row => ({
-                    ...row,
-                    action: 'Immediate follow-up required',
-                    priority: 'critical'
-                })),
-                pickups_today: pickupsToday.rows.map(row => ({
-                    ...row,
-                    next_pickup_date_display: convertToDisplayDate(row.next_pickup_date),
-                    action: 'Expected to collect medication today',
-                    priority: 'high'
-                })),
-                never_picked_up: neverPickedUp.rows.map(row => ({
-                    ...row,
-                    enrollment_date_display: convertToDisplayDate(row.enrollment_date),
-                    action: 'Patient enrolled but never collected medication',
-                    priority: 'medium'
-                }))
-            },
-            summary: {
-                total_urgent: highRiskDefaulters.rows.length + 
-                             pickupsToday.rows.length + 
-                             neverPickedUp.rows.length,
-                critical: highRiskDefaulters.rows.length,
-                high: pickupsToday.rows.length,
-                medium: neverPickedUp.rows.length
+                high_risk_defaulters: highRiskDefaulters.rows,
+                pickups_today: pickupsToday.rows,
+                never_picked_up: neverPickedUp.rows
             }
         });
-
     } catch (error) {
-        console.error('❌ Error fetching urgent actions:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching urgent actions',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+        res.status(500).json({ success: false, message: 'Error fetching urgent actions' });
     }
 });
 
@@ -254,29 +176,24 @@ router.get('/urgent-actions', async (req, res) => {
 // HELPER FUNCTIONS
 // ============================================
 
-// Get patient statistics
 const getPatientStatistics = async () => {
     const result = await query(`
         SELECT
             COUNT(*) as total_patients,
             COUNT(*) FILTER (WHERE is_active = true) as active_patients,
-            COUNT(*) FILTER (WHERE is_active = false) as inactive_patients,
+            COUNT(*) FILTER (WHERE risk_level ILIKE 'high') as high_risk_patients,
+            COUNT(*) FILTER (WHERE risk_level ILIKE 'medium') as medium_risk_patients,
             COUNT(*) FILTER (WHERE gender = 'Male') as male_patients,
-            COUNT(*) FILTER (WHERE gender = 'Female') as female_patients,
-            COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE - INTERVAL '30 days') as new_this_month,
-            COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE - INTERVAL '7 days') as new_this_week
+            COUNT(*) FILTER (WHERE gender = 'Female') as female_patients
         FROM patients
     `);
     return result.rows[0];
 };
 
-// Get pickup statistics
 const getPickupStatistics = async () => {
     const result = await query(`
         SELECT
             COUNT(*) as total_pickups,
-            COUNT(*) FILTER (WHERE actual_pickup_date >= CURRENT_DATE - INTERVAL '30 days') as pickups_this_month,
-            COUNT(*) FILTER (WHERE actual_pickup_date >= CURRENT_DATE - INTERVAL '7 days') as pickups_this_week,
             COUNT(*) FILTER (WHERE actual_pickup_date = CURRENT_DATE) as pickups_today,
             AVG(days_supply) as avg_days_supply
         FROM medication_pickups
@@ -287,16 +204,13 @@ const getPickupStatistics = async () => {
     };
 };
 
-// Get defaulter statistics
 const getDefaulterStatistics = async () => {
     const result = await query(`
         SELECT
             COUNT(*) FILTER (WHERE status = 'pending') as active_defaulters,
-            COUNT(*) FILTER (WHERE status = 'returned') as returned,
-            COUNT(*) FILTER (WHERE status = 'lost_to_followup') as lost_to_followup,
-            COUNT(*) FILTER (WHERE risk_level = 'high') as high_risk,
-            COUNT(*) FILTER (WHERE risk_level = 'medium') as medium_risk,
-            COUNT(*) FILTER (WHERE risk_level = 'low') as low_risk,
+            COUNT(*) FILTER (WHERE risk_level ILIKE 'high') as high_risk,
+            COUNT(*) FILTER (WHERE risk_level ILIKE 'medium') as medium_risk,
+            COUNT(*) FILTER (WHERE risk_level ILIKE 'low') as low_risk,
             AVG(days_overdue) FILTER (WHERE status = 'pending') as avg_days_overdue
         FROM defaulters
     `);
@@ -306,7 +220,6 @@ const getDefaulterStatistics = async () => {
     };
 };
 
-// Get upcoming pickups
 const getUpcomingPickups = async (days) => {
     const result = await query(
         `SELECT COUNT(*) as count
@@ -320,38 +233,31 @@ const getUpcomingPickups = async (days) => {
          ) subquery`,
         [days]
     );
-    return Array(parseInt(result.rows[0].count)).fill({});
+    return Array(parseInt(result.rows[0].count) || 0).fill({});
 };
 
-// Get recent activity
 const getRecentActivity = async (limit) => {
     const pickups = await query(
-        `SELECT 
-            'pickup' as type,
-            mp.created_at,
-            p.first_name || ' ' || p.last_name as patient_name,
-            p.patient_number,
-            'Medication collected' as description
-         FROM medication_pickups mp
-         JOIN patients p ON mp.patient_id = p.patient_id
-         ORDER BY mp.created_at DESC
-         LIMIT $1`,
+        `SELECT 'pickup' as type, mp.created_at, p.first_name || ' ' || p.last_name as patient_name,
+         p.patient_number, 'Medication collected' as description
+         FROM medication_pickups mp JOIN patients p ON mp.patient_id = p.patient_id
+         ORDER BY mp.created_at DESC LIMIT $1`,
         [limit]
     );
     return pickups.rows;
 };
 
-// Calculate adherence rate
 const calculateAdherenceRate = (activePatients, activeDefaulters) => {
-    if (activePatients === 0) return 0;
-    const adherent = activePatients - activeDefaulters;
-    return Math.round((adherent / activePatients) * 100);
+    const total = parseInt(activePatients) || 0;
+    const defaulting = parseInt(activeDefaulters) || 0;
+    if (total === 0) return 0;
+    // Adherent patients are those active but NOT currently defaulting
+    const adherent = Math.max(0, total - defaulting);
+    return Math.round((adherent / total) * 100);
 };
 
-// Generate alerts based on data
 const generateAlerts = (defaulterStats, upcomingPickups) => {
     const alerts = [];
-
     if (defaulterStats.high_risk > 0) {
         alerts.push({
             type: 'critical',
@@ -360,36 +266,7 @@ const generateAlerts = (defaulterStats, upcomingPickups) => {
             link: '/defaulters?risk=high'
         });
     }
-
-    if (defaulterStats.active_defaulters > 20) {
-        alerts.push({
-            type: 'warning',
-            message: `Total defaulters (${defaulterStats.active_defaulters}) exceeds threshold`,
-            action: 'Review defaulter management strategy',
-            link: '/defaulters'
-        });
-    }
-
-    if (upcomingPickups.length > 50) {
-        alerts.push({
-            type: 'info',
-            message: `${upcomingPickups.length} patients have pickups scheduled in next 7 days`,
-            action: 'Ensure adequate medication stock',
-            link: '/pickups/upcoming'
-        });
-    }
-
     return alerts;
-};
-
-// Convert YYYY-MM-DD to DD-MM-YYYY
-const convertToDisplayDate = (yyyymmdd) => {
-    if (!yyyymmdd) return '';
-    const date = new Date(yyyymmdd);
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}-${month}-${year}`;
 };
 
 module.exports = router;

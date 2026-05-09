@@ -39,7 +39,12 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
     risk_notes:               '',
     clinic_number:            '',
     nurse_number:             '',
-    dispensing_clinic:        ''
+    dispensing_clinic:        '',
+    // ── NEW ML FIELDS ─────────────────────────────────────────────
+    marital_status:           '',
+    treatment_supporter:      false,
+    who_clinical_stage:       '2',
+    art_start_date:           '',
   });
 
   const [isNewPatient, setIsNewPatient] = useState(true);
@@ -47,17 +52,16 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
   const [error, setError]               = useState(null);
   const [success, setSuccess]           = useState(false);
 
-  // ── Generate P + 5 random digits e.g. P47823 ──
   const generatePatientNumber = () => {
     return 'P' + Math.floor(10000 + Math.random() * 90000);
   };
 
-  // ── Initialise fields on mount ──
   useEffect(() => {
     setFormData(prev => ({
       ...prev,
       patient_number:    generatePatientNumber(),
       enrollment_date:   new Date().toISOString().split('T')[0],
+      art_start_date:    new Date().toISOString().split('T')[0],
       clinic_number:     isNurse ? (currentUser?.clinic_number || '') : '',
       nurse_number:      isNurse ? (currentUser?.nurse_number  || '') : '',
       dispensing_clinic: isNurse ? (currentUser?.clinic_name   || '') : ''
@@ -116,6 +120,9 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
     if (formData.has_mental_health)       score += 15;
     if (formData.has_kidney_disease)      score += 10;
     if (formData.other_chronic_condition) score += 5;
+    if (formData.marital_status === 'Single' || formData.marital_status === 'Divorced') score += 10;
+    if (!formData.treatment_supporter)    score += 10;
+    if (parseInt(formData.who_clinical_stage) >= 3) score += 10;
 
     score = Math.min(score, 100);
     const label = score >= 50 ? 'High' : score >= 25 ? 'Medium' : 'Low';
@@ -193,7 +200,6 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
     setLoading(true);
     setError(null);
     try {
-      // ✅ COMPILE CHRONIC DISEASES INTO STRING
       const conditions = [];
       if (formData.has_hypertension) conditions.push('Hypertension');
       if (formData.has_diabetes) conditions.push('Diabetes');
@@ -201,7 +207,7 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
       if (formData.has_mental_health) conditions.push('Mental Health Condition');
       if (formData.has_kidney_disease) conditions.push('Kidney Disease');
       if (formData.other_chronic_condition) conditions.push(formData.other_chronic_condition.trim());
-      
+
       const chronic_diseases_string = conditions.join(', ');
 
       await patientsAPI.createPatient({
@@ -209,8 +215,13 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
         is_new_patient:          isNewPatient,
         emergency_contact_name:  formData.next_of_kin_name,
         emergency_contact_phone: formData.next_of_kin_phone,
-        chronic_diseases:        chronic_diseases_string // Send to backend
+        chronic_diseases:        chronic_diseases_string,
+        marital_status:          formData.marital_status,
+        treatment_supporter:     formData.treatment_supporter,
+        who_clinical_stage:      parseInt(formData.who_clinical_stage) || 2,
+        art_start_date:          formData.art_start_date || formData.enrollment_date,
       });
+
       setSuccess(true);
       const name = formData.first_name + ' ' + formData.last_name;
       showToast({ type: 'success', message: name + ' added successfully', duration: 5000 });
@@ -320,19 +331,10 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
             <div className="form-row">
               <div className="form-group">
                 <label>Date of Birth <span className="required">*</span></label>
-                <input
-                  type="date"
-                  name="date_of_birth"
-                  value={formData.date_of_birth}
-                  onChange={handleChange}
-                  onBlur={handleDobBlur}
-                  min="1947-01-01"
-                  max="2018-12-31"
-                  required
-                />
-                <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>
-                  Range: 1947 — 2018
-                </small>
+                <input type="date" name="date_of_birth" value={formData.date_of_birth}
+                  onChange={handleChange} onBlur={handleDobBlur}
+                  min="1947-01-01" max="2018-12-31" required />
+                <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>Range: 1947 — 2018</small>
               </div>
               <div className="form-group">
                 <label>Gender <span className="required">*</span></label>
@@ -344,6 +346,32 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
                 </select>
               </div>
             </div>
+
+            {/* ── NEW: Marital Status ── */}
+            <div className="form-row">
+              <div className="form-group">
+                <label>Marital Status</label>
+                <select name="marital_status" value={formData.marital_status} onChange={handleChange}>
+                  <option value="">Select marital status</option>
+                  <option value="Single">Single</option>
+                  <option value="Married">Married</option>
+                  <option value="Divorced">Divorced</option>
+                  <option value="Widowed">Widowed</option>
+                </select>
+                <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>
+                  Used in ML risk prediction
+                </small>
+              </div>
+              <div className="form-group">
+                <label>ART Start Date</label>
+                <input type="date" name="art_start_date" value={formData.art_start_date}
+                  onChange={handleChange} />
+                <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>
+                  Date patient started ART (defaults to enrollment date)
+                </small>
+              </div>
+            </div>
+
             <div className="form-row">
               <div className="form-group">
                 <label>Phone Number <span className="required">*</span></label>
@@ -411,8 +439,8 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
               </div>
               <div className="form-group">
                 <label>Relationship <span className="required">*</span></label>
-                <select name="next_of_kin_relationship"
-                  value={formData.next_of_kin_relationship} onChange={handleChange} required>
+                <select name="next_of_kin_relationship" value={formData.next_of_kin_relationship}
+                  onChange={handleChange} required>
                   <option value="">Select relationship</option>
                   <option value="Spouse">Spouse</option>
                   <option value="Parent">Parent</option>
@@ -441,16 +469,53 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
           {/* ── Medical Information ── */}
           <div className="form-section">
             <h3 className="section-title">Medical Information</h3>
-            <div className="form-group">
-              <label>ARV Regimen</label>
-              <select name="arv_regimen" value={formData.arv_regimen} onChange={handleChange}>
-                <option value="">Select ARV regimen (optional)</option>
-                <option value="TDF/3TC/EFV">TDF/3TC/EFV (Tenofovir/Lamivudine/Efavirenz)</option>
-                <option value="TDF/3TC/DTG">TDF/3TC/DTG (Tenofovir/Lamivudine/Dolutegravir)</option>
-                <option value="ABC/3TC/DTG">ABC/3TC/DTG (Abacavir/Lamivudine/Dolutegravir)</option>
-                <option value="AZT/3TC/NVP">AZT/3TC/NVP (Zidovudine/Lamivudine/Nevirapine)</option>
-                <option value="Other">Other</option>
-              </select>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label>ARV Regimen</label>
+                <select name="arv_regimen" value={formData.arv_regimen} onChange={handleChange}>
+                  <option value="">Select ARV regimen (optional)</option>
+                  <option value="TDF/3TC/EFV">TDF/3TC/EFV (Tenofovir/Lamivudine/Efavirenz)</option>
+                  <option value="TLD">TLD / TDF/3TC/DTG (Tenofovir/Lamivudine/Dolutegravir)</option>
+                  <option value="ABC/3TC/DTG">ABC/3TC/DTG (Abacavir/Lamivudine/Dolutegravir)</option>
+                  <option value="AZT/3TC/NVP">AZT/3TC/NVP (Zidovudine/Lamivudine/Nevirapine)</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              {/* ── NEW: WHO Clinical Stage ── */}
+              <div className="form-group">
+                <label>WHO Clinical Stage</label>
+                <select name="who_clinical_stage" value={formData.who_clinical_stage} onChange={handleChange}>
+                  <option value="1">Stage 1 — Asymptomatic</option>
+                  <option value="2">Stage 2 — Mild Symptoms</option>
+                  <option value="3">Stage 3 — Advanced</option>
+                  <option value="4">Stage 4 — Severe / AIDS</option>
+                </select>
+                <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>
+                  Clinical stage at ART initiation
+                </small>
+              </div>
+            </div>
+
+            {/* ── NEW: Treatment Supporter ── */}
+            <div className="form-group" style={{ marginTop: '0.5rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  name="treatment_supporter"
+                  checked={formData.treatment_supporter}
+                  onChange={handleChange}
+                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                />
+                <span style={{ fontWeight: 600 }}>
+                  🤝 Patient has a Treatment Supporter
+                </span>
+              </label>
+              <small style={{ color: '#6b7280', fontSize: '0.75rem', marginTop: '0.25rem', display: 'block' }}>
+                A treatment supporter is a trusted person (spouse, parent, neighbour) who reminds the patient
+                to collect medication and accompany them to clinic. Required by Zimbabwe MOHCC policy.
+              </small>
             </div>
 
             <div className="form-group" style={{ marginTop: '1rem' }}>
@@ -494,7 +559,7 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
               </div>
               <div className="risk-preview-footer">
                 <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>
-                  Based on distance, age &amp; chronic conditions.
+                  Based on distance, age, marital status, treatment supporter &amp; chronic conditions.
                   Pickup history adds more weight after registration.
                 </span>
                 <span className="risk-preview-score" style={{ color: risk.color }}>
@@ -573,7 +638,7 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
               ) : (
                 <>
                   <input type="text" name="dispensing_clinic" value={formData.dispensing_clinic}
-                    onChange={handleChange} placeholder="e.g. Sakubva Clinic, Mutare" />
+                    onChange={handleChange} placeholder="e.g. Chinyamukwakwa Clinic, Chipinge" />
                   <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>
                     Name of the registering clinic
                   </small>

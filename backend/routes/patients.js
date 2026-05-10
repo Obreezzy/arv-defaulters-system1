@@ -20,7 +20,7 @@ router.post('/predict', async (req, res) => {
             SELECT 
                 patient_id, date_of_birth, distance_from_clinic, gender,
                 district, ward, village, headman, chronic_diseases,
-                next_pickup_date, arv_regimen,total_appointments, marital_status,
+                next_pickup_date, arv_regimen, marital_status,
                 treatment_supporter, who_clinical_stage, art_start_date
             FROM patients WHERE is_active = true
         `);

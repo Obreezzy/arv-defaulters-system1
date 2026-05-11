@@ -31,14 +31,19 @@ router.post('/predict', async (req, res) => {
             try {
                 // Get past defaults count for this patient
                 const historyResult = await client.query(`
-                    SELECT COUNT(*) AS past_defaults,
-                           COUNT(*) AS total_appointments
+                    SELECT COUNT(*) AS past_defaults
                     FROM defaulters
                     WHERE patient_id = $1
                 `, [patient.patient_id]);
 
-                const pastDefaults = parseInt(historyResult.rows[0].past_defaults) || 0;
-                const totalAppointments = parseInt(historyResult.rows[0].total_appointments) || 1;
+                const pickupResult = await client.query(`
+                    SELECT COUNT(*) AS total_pickups
+                    FROM medication_pickups
+                    WHERE patient_id = $1
+                `, [patient.patient_id]);
+
+                const pastDefaults      = parseInt(historyResult.rows[0].past_defaults) || 0;
+                const totalAppointments = parseInt(pickupResult.rows[0].total_pickups) || 1;
 
                 // Calculate days overdue
                 const daysOverdue = patient.next_pickup_date

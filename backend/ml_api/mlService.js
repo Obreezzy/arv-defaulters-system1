@@ -1,5 +1,5 @@
 /**
- * 🧠 SMART ML RISK ENGINE
+ * SMART ML RISK ENGINE
  * Drop-in replacement for riskEngine.js
  * Calls the Python Flask ML API (LR + RF Ensemble)
  * Falls back to original weighted score if API is unreachable.
@@ -126,7 +126,7 @@ const calculateRiskScore = async (
         // ── Fallback to original weighted score engine ─────────────
         // This runs if Flask API is down, cold starting, or unreachable
         // Your system NEVER crashes — seamless fallback
-        console.warn('⚠️  ML API unavailable — using weighted fallback:', error.message);
+        console.warn(' ML API unavailable — using weighted fallback:', error.message);
         return fallbackWeightedScore(patient, daysOverdue, pastDefaults, activeWeatherAlerts);
     }
 };
@@ -166,7 +166,7 @@ const batchCalculateRisk = async (patients) => {
         return response.data.predictions;
 
     } catch (error) {
-        console.warn('⚠️  Batch ML API error — using fallback:', error.message);
+        console.warn('Batch ML API error — using fallback:', error.message);
         return patients.map(p =>
             fallbackWeightedScore(p, p.days_overdue || 0, p.past_defaults || 0)
         );
@@ -180,10 +180,10 @@ const batchCalculateRisk = async (patients) => {
 const checkMLHealth = async () => {
     try {
         const res = await axios.get(`${ML_API_URL}/health`, { timeout: 5000 });
-        console.log('✅ ML API is online:', res.data.model);
+        console.log(' ML API is online:', res.data.model);
         return true;
     } catch (err) {
-        console.warn('⚠️  ML API offline. Weighted fallback is active.');
+        console.warn(' ML API offline. Weighted fallback is active.');
         return false;
     }
 };

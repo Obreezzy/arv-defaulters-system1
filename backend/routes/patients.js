@@ -7,7 +7,7 @@ const { calculateRiskScore } = require('../services/riskEngine');
 router.use(verifyToken);
 
 // ==========================================
-// 1. 🔮 PREDICT RISK FOR ALL PATIENTS — ML Powered
+// 1. PREDICT RISK FOR ALL PATIENTS — ML Powered
 // ==========================================
 router.post('/predict', async (req, res) => {
     const activeWeatherAlerts = req.body.activeWeatherAlerts || [];
@@ -85,7 +85,7 @@ router.post('/predict', async (req, res) => {
 
             } catch (patientErr) {
                 // Log individual patient error but continue with others
-                console.error(`⚠️ Risk prediction failed for patient ${patient.patient_id}:`, patientErr.message);
+                console.error(`Risk prediction failed for patient ${patient.patient_id}:`, patientErr.message);
             }
         }
 
@@ -222,7 +222,7 @@ router.post('/', async (req, res) => {
             newPatient.risk_factors = initialPrediction.factors;
 
         } catch (mlErr) {
-            console.warn('⚠️ Initial ML prediction skipped:', mlErr.message);
+            console.warn('Initial ML prediction skipped:', mlErr.message);
         }
 
         // Create treatment record
@@ -241,7 +241,7 @@ router.post('/', async (req, res) => {
                         [newPatient.patient_id]
                     );
                 } catch(e) {
-                    console.error('⚠️ Could not auto-create treatment record:', e.message);
+                    console.error('Could not auto-create treatment record:', e.message);
                 }
             }
         }
@@ -341,7 +341,7 @@ router.put('/:id', async (req, res) => {
             updatedPatient.risk_factors = prediction.factors;
 
         } catch (mlErr) {
-            console.warn('⚠️ ML re-prediction skipped after update:', mlErr.message);
+            console.warn('ML re-prediction skipped after update:', mlErr.message);
         }
 
         res.json({ success: true, patient: updatedPatient });

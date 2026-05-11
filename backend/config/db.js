@@ -39,12 +39,12 @@ const pool = new Pool({
 
 // When successfully connected to database
 pool.on('connect', () => {
-    console.log('✅ Database connected successfully');
+    console.log('Database connected successfully');
 });
 
 // When there's an error
 pool.on('error', (err) => {
-    console.error('❌ Unexpected database error:', err);
+    console.error('Unexpected database error:', err);
     process.exit(-1); // Stop the app if database fails
 });
 
@@ -97,7 +97,7 @@ const getClient = async () => {
     
     // Set timeout warning (if client not released in 5 seconds)
     const timeout = setTimeout(() => {
-        console.error('⚠️ A client has been checked out for more than 5 seconds!');
+        console.error('`A client has been checked out for more than 5 seconds!');
     }, 5000);
     
     // Override release to clear timeout

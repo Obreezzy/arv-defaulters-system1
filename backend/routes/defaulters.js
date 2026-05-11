@@ -47,7 +47,7 @@ router.get('/', async (req, res) => {
             AND p.next_pickup_date IS NOT NULL
         `);
 
-        // 3. ✅ SELF-HEALING CLEANUP: Instantly delete anyone who was accidentally added 
+        // 3. SELF-HEALING CLEANUP: Instantly delete anyone who was accidentally added 
         // before the 3-day mark (fixes the lingering 1-day late patients)
         await query(`
             DELETE FROM defaulters 

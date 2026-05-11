@@ -18,7 +18,7 @@ router.use(verifyToken);
 // Purpose: Get comprehensive system overview
 router.get('/overview', async (req, res) => {
     try {
-        console.log('📊 Fetching dashboard overview');
+        console.log('Fetching dashboard overview');
 
         // Get all statistics in parallel
         const [
@@ -67,7 +67,7 @@ router.get('/overview', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Error fetching dashboard overview:', error);
+        console.error('Error fetching dashboard overview:', error);
         res.status(500).json({
             success: false,
             message: 'Error fetching dashboard overview',
@@ -89,7 +89,7 @@ router.get('/patients', async (req, res) => {
             stats: stats
         });
     } catch (error) {
-        console.error('❌ Error fetching patient statistics:', error);
+        console.error('Error fetching patient statistics:', error);
         res.status(500).json({ success: false, message: 'Error fetching patient statistics' });
     }
 });
@@ -126,7 +126,7 @@ router.get('/defaulter-trends', async (req, res) => {
             }))
         });
     } catch (error) {
-        console.error('❌ Error fetching defaulter trends:', error);
+        console.error('Error fetching defaulter trends:', error);
         res.status(500).json({ success: false, message: 'Error fetching trends' });
     }
 });

@@ -10,7 +10,7 @@ const verifyToken = async (req, res, next) => {
     try {
         const authHeader = req.headers['authorization'];
 
-        console.log('🔍 Auth header received:', authHeader ? 'Yes' : 'No');
+        console.log('Auth header received:', authHeader ? 'Yes' : 'No');
 
         if (!authHeader) {
             return res.status(401).json({
@@ -31,7 +31,7 @@ const verifyToken = async (req, res, next) => {
         // Verify the JWT token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-        console.log('✅ Token verified for user:', decoded.username);
+        console.log('Token verified for user:', decoded.username);
 
         // Set req.user from decoded token
         req.user = {
@@ -44,7 +44,7 @@ const verifyToken = async (req, res, next) => {
         next();
 
     } catch (error) {
-        console.error('❌ Token verification failed:', error.message);
+        console.error('Token verification failed:', error.message);
 
         if (error.name === 'TokenExpiredError') {
             return res.status(401).json({
@@ -81,18 +81,18 @@ const verifyRole = (allowedRoles) => {
             }
 
             if (!allowedRoles.includes(req.user.role)) {
-                console.log('❌ Access denied for role:', req.user.role);
+                console.log('Access denied for role:', req.user.role);
                 return res.status(403).json({
                     success: false,
                     message: `Access denied. Required role: ${allowedRoles.join(' or ')}. Your role: ${req.user.role}`
                 });
             }
 
-            console.log('✅ Role verified:', req.user.role);
+            console.log('Role verified:', req.user.role);
             next();
 
         } catch (error) {
-            console.error('❌ Role verification error:', error);
+            console.error('Role verification error:', error);
             return res.status(500).json({
                 success: false,
                 message: 'Error verifying user role'

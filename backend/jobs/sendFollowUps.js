@@ -86,7 +86,7 @@
 //             const message = getFollowUpMessage(defaulter);
 //             const phone = defaulter.phone_number;
 
-//             console.log(`📤 Sending day-${defaulter.days_overdue} follow-up to ${defaulter.first_name} ${defaulter.last_name}...`);
+//             console.log(`Sending day-${defaulter.days_overdue} follow-up to ${defaulter.first_name} ${defaulter.last_name}...`);
 
 //             const smsResult = await smsService.sendSMS(phone, message);
 
@@ -94,7 +94,7 @@
 
 //             if (smsResult.success) {
 //                 results.successful++;
-//                 console.log(`  ✅ Sent — SID: ${smsResult.messageSid}`);
+//                 console.log(`Sent — SID: ${smsResult.messageSid}`);
 //                 results.details.push({
 //                     patient_id: defaulter.patient_id,
 //                     patient_number: defaulter.patient_number,
@@ -106,7 +106,7 @@
 //                 });
 //             } else {
 //                 results.failed++;
-//                 console.log(`  ❌ Failed — ${smsResult.error}`);
+//                 console.log(`Failed — ${smsResult.error}`);
 //                 results.details.push({
 //                     patient_id: defaulter.patient_id,
 //                     patient_number: defaulter.patient_number,

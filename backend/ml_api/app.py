@@ -24,7 +24,7 @@ with open(os.path.join(MODEL_DIR, 'model_config.json')) as f:
 
 FEATURES  = config['features']
 THRESHOLD = config['threshold']
-print(f'✅ Models loaded! Threshold: {THRESHOLD:.2f}')
+print(f'Models loaded! Threshold: {THRESHOLD:.2f}')
 
 
 # ── Build feature vector as plain Python list ─────────────────────
@@ -276,5 +276,5 @@ def batch_predict():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    print(f'🚀 ARV ML API running on port {port}')
+    print(f' ARV ML API running on port {port}')
     app.run(host='0.0.0.0', port=port, debug=False)

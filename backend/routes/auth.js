@@ -48,7 +48,7 @@ router.post('/register', async (req, res) => {
       phone_number, clinic_name, clinic_number
     } = req.body;
 
-    console.log('📝 Registration attempt:', { username, email, role });
+    console.log('Registration attempt:', { username, email, role });
 
     // ── Required fields ──
     if (!username || !email || !password || !full_name || !role) {
@@ -130,7 +130,7 @@ router.post('/register', async (req, res) => {
     const staff_id     = await generateStaffId();
     const nurse_number = role === 'healthcare_worker' ? await generateNurseNumber() : null;
 
-    console.log('🪪 Generated Staff ID:', staff_id, nurse_number ? '| Nurse No: ' + nurse_number : '');
+    console.log('Generated Staff ID:', staff_id, nurse_number ? '| Nurse No: ' + nurse_number : '');
 
     // ── Insert ──
     const result = await query(
@@ -153,7 +153,7 @@ router.post('/register', async (req, res) => {
     );
 
     const newUser = result.rows[0];
-    console.log('✅ User created successfully:', newUser.user_id, '| Staff ID:', staff_id);
+    console.log('User created successfully:', newUser.user_id, '| Staff ID:', staff_id);
 
     res.status(201).json({
       success: true,
@@ -175,7 +175,7 @@ router.post('/register', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Registration error:', error);
+    console.error(' Registration error:', error);
 
     // ── Catch any remaining DB unique constraint errors ──
     if (error.code === '23505') {
@@ -221,7 +221,7 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log('🔑 Login attempt:', email);
+    console.log('Login attempt:', email);
 
     if (!email || !password) {
       return res.status(400).json({
@@ -277,7 +277,7 @@ router.post('/login', async (req, res) => {
       expiresIn: process.env.JWT_EXPIRES_IN || '24h'
     });
 
-    console.log('🎟️ JWT generated for:', email, '| Role:', user.role);
+    console.log('JWT generated for:', email, '| Role:', user.role);
 
     res.json({
       success: true,
@@ -299,7 +299,7 @@ router.post('/login', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Login error:', error);
+    console.error('Login error:', error);
     res.status(500).json({
       success: false,
       message: 'An error occurred during login. Please try again.',
@@ -350,7 +350,7 @@ router.get('/me', verifyToken, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error fetching user profile:', error);
+    console.error('Error fetching user profile:', error);
     res.status(500).json({
       success: false,
       message: 'Could not load user profile. Please try again.'

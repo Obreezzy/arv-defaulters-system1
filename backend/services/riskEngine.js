@@ -93,10 +93,10 @@ const batchCalculateRisk = async (patients) => {
 const checkMLHealth = async () => {
     try {
         const res = await axios.get(`${ML_API_URL}/health`, { timeout: 60000 });
-        console.log(`✅ ML Risk Engine online — ${res.data.model}`);
+        console.log(`ML Risk Engine online — ${res.data.model}`);
         return true;
     } catch (err) {
-        console.error('❌ ML Risk Engine offline. Please start the Flask API.');
+        console.error(' ML Risk Engine offline. Please start the Flask API.');
         console.error(`   Expected at: ${ML_API_URL}`);
         console.error(`   Run: cd ml_api && python app.py`);
         return false;

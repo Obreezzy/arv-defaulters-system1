@@ -1,137 +1,137 @@
-// backend/routes/scheduler.js
-// API endpoints for managing scheduled jobs
+// // backend/routes/scheduler.js
+// // API endpoints for managing scheduled jobs
 
-const express = require('express');
-const scheduler = require('../services/scheduler');
-const { verifyToken, verifyRole } = require('../middleware/auth');
+// const express = require('express');
+// const scheduler = require('../services/scheduler');
+// const { verifyToken, verifyRole } = require('../middleware/auth');
 
-const router = express.Router();
+// const router = express.Router();
 
-// ALL routes require the user to be logged in
-router.use(verifyToken);
+// // ALL routes require the user to be logged in
+// router.use(verifyToken);
 
-// ============================================
-// ROUTE 1: GET SCHEDULED JOBS STATUS (Admin Only)
-// ============================================
+// // ============================================
+// // ROUTE 1: GET SCHEDULED JOBS STATUS (Admin Only)
+// // ============================================
 
-// GET /api/scheduler/jobs
-// Purpose: Get list of all scheduled jobs and their status
-router.get('/jobs', verifyRole(['admin']), (req, res) => {
-    try {
-        const jobs = scheduler.getScheduledJobs();
+// // GET /api/scheduler/jobs
+// // Purpose: Get list of all scheduled jobs and their status
+// router.get('/jobs', verifyRole(['admin']), (req, res) => {
+//     try {
+//         const jobs = scheduler.getScheduledJobs();
 
-        res.json({
-            success: true,
-            message: 'Scheduled jobs retrieved successfully',
-            count: jobs.length,
-            jobs: jobs
-        });
+//         res.json({
+//             success: true,
+//             message: 'Scheduled jobs retrieved successfully',
+//             count: jobs.length,
+//             jobs: jobs
+//         });
 
-    } catch (error) {
-        console.error('Error fetching scheduled jobs:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching scheduled jobs',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-});
+//     } catch (error) {
+//         console.error('Error fetching scheduled jobs:', error);
+//         res.status(500).json({
+//             success: false,
+//             message: 'Error fetching scheduled jobs',
+//             error: process.env.NODE_ENV === 'development' ? error.message : undefined
+//         });
+//     }
+// });
 
-// ============================================
-// ROUTE 2: MANUALLY TRIGGER DEFAULTER DETECTION (Open to all staff)
-// ============================================
+// // ============================================
+// // ROUTE 2: MANUALLY TRIGGER DEFAULTER DETECTION (Open to all staff)
+// // ============================================
 
-// POST /api/scheduler/trigger/detect-defaulters
-// Purpose: Manually run defaulter detection job
-router.post('/trigger/detect-defaulters', async (req, res) => {
-    try {
-        console.log('Manual trigger: Defaulter Detection');
-        // Fallback to 'Unknown User' if username isn't in the token
-        const username = req.user?.username || 'Authorized Staff';
-        console.log('Triggered by:', username);
+// // POST /api/scheduler/trigger/detect-defaulters
+// // Purpose: Manually run defaulter detection job
+// router.post('/trigger/detect-defaulters', async (req, res) => {
+//     try {
+//         console.log('Manual trigger: Defaulter Detection');
+//         // Fallback to 'Unknown User' if username isn't in the token
+//         const username = req.user?.username || 'Authorized Staff';
+//         console.log('Triggered by:', username);
 
-        const result = await scheduler.triggerDefaulterDetection();
+//         const result = await scheduler.triggerDefaulterDetection();
 
-        res.json({
-            success: true,
-            message: 'Defaulter detection completed',
-            result: result
-        });
+//         res.json({
+//             success: true,
+//             message: 'Defaulter detection completed',
+//             result: result
+//         });
 
-    } catch (error) {
-        console.error('Error triggering defaulter detection:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error triggering defaulter detection',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-});
+//     } catch (error) {
+//         console.error('Error triggering defaulter detection:', error);
+//         res.status(500).json({
+//             success: false,
+//             message: 'Error triggering defaulter detection',
+//             error: process.env.NODE_ENV === 'development' ? error.message : undefined
+//         });
+//     }
+// });
 
-// ============================================
-// ROUTE 3: MANUALLY TRIGGER REMINDERS (Open to all staff)
-// ============================================
+// // ============================================
+// // ROUTE 3: MANUALLY TRIGGER REMINDERS (Open to all staff)
+// // ============================================
 
-// POST /api/scheduler/trigger/send-reminders
-// Purpose: Manually send reminders
-router.post('/trigger/send-reminders', async (req, res) => {
-    try {
-        const { days } = req.body;
-        const reminderDays = days || 3;
+// // POST /api/scheduler/trigger/send-reminders
+// // Purpose: Manually send reminders
+// router.post('/trigger/send-reminders', async (req, res) => {
+//     try {
+//         const { days } = req.body;
+//         const reminderDays = days || 3;
 
-        console.log(`Manual trigger: Send ${reminderDays}-day reminders`);
-        const username = req.user?.username || 'Authorized Staff';
-        console.log('Triggered by:', username);
+//         console.log(`Manual trigger: Send ${reminderDays}-day reminders`);
+//         const username = req.user?.username || 'Authorized Staff';
+//         console.log('Triggered by:', username);
 
-        const result = await scheduler.triggerReminders(reminderDays);
+//         const result = await scheduler.triggerReminders(reminderDays);
 
-        res.json({
-            success: true,
-            message: `${reminderDays}-day reminders sent`,
-            result: result
-        });
+//         res.json({
+//             success: true,
+//             message: `${reminderDays}-day reminders sent`,
+//             result: result
+//         });
 
-    } catch (error) {
-        console.error('Error triggering reminders:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error triggering reminders',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-});
+//     } catch (error) {
+//         console.error('Error triggering reminders:', error);
+//         res.status(500).json({
+//             success: false,
+//             message: 'Error triggering reminders',
+//             error: process.env.NODE_ENV === 'development' ? error.message : undefined
+//         });
+//     }
+// });
 
-// ============================================
-// ROUTE 4: GET SCHEDULER STATUS (Admin Only)
-// ============================================
+// // ============================================
+// // ROUTE 4: GET SCHEDULER STATUS (Admin Only)
+// // ============================================
 
-// GET /api/scheduler/status
-// Purpose: Get overall scheduler status
-router.get('/status', verifyRole(['admin']), (req, res) => {
-    try {
-        const jobs = scheduler.getScheduledJobs();
-        const runningJobs = jobs.filter(job => job.running).length;
+// // GET /api/scheduler/status
+// // Purpose: Get overall scheduler status
+// router.get('/status', verifyRole(['admin']), (req, res) => {
+//     try {
+//         const jobs = scheduler.getScheduledJobs();
+//         const runningJobs = jobs.filter(job => job.running).length;
 
-        res.json({
-            success: true,
-            message: 'Scheduler status retrieved',
-            status: {
-                active: runningJobs > 0,
-                total_jobs: jobs.length,
-                running_jobs: runningJobs,
-                timestamp: new Date().toISOString()
-            },
-            jobs: jobs
-        });
+//         res.json({
+//             success: true,
+//             message: 'Scheduler status retrieved',
+//             status: {
+//                 active: runningJobs > 0,
+//                 total_jobs: jobs.length,
+//                 running_jobs: runningJobs,
+//                 timestamp: new Date().toISOString()
+//             },
+//             jobs: jobs
+//         });
 
-    } catch (error) {
-        console.error('Error fetching scheduler status:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching scheduler status',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-});
+//     } catch (error) {
+//         console.error('Error fetching scheduler status:', error);
+//         res.status(500).json({
+//             success: false,
+//             message: 'Error fetching scheduler status',
+//             error: process.env.NODE_ENV === 'development' ? error.message : undefined
+//         });
+//     }
+// });
 
-module.exports = router;
+// module.exports = router;

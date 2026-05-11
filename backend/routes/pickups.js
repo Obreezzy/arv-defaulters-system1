@@ -69,7 +69,7 @@ const recalculatePatientRisk = async (patient_id) => {
     if (patientRes.rows.length === 0) return;
     const patient = patientRes.rows[0];
 
-    // ✅ FIX: Count history directly from the defaulters table so it never forgets past defaults!
+    // FIX: Count history directly from the defaulters table so it never forgets past defaults!
     const historyRes = await db.query(
       `SELECT COUNT(*) AS late_pickups FROM defaulters WHERE patient_id = $1`,
       [patient_id]
@@ -86,7 +86,7 @@ const recalculatePatientRisk = async (patient_id) => {
     );
 
   } catch (err) {
-    console.error('⚠️ Risk recalculation failed (non-fatal):', err.message);
+    console.error('Risk recalculation failed (non-fatal):', err.message);
   }
 };
 
@@ -132,12 +132,12 @@ router.post('/record', async (req, res) => {
       );
       if (t1.rows.length > 0) treatment_id = t1.rows[0].treatment_id;
     } catch (e) {
-      console.log('⚠️ Could not query patient_treatments:', e.message);
+      console.log('Could not query patient_treatments:', e.message);
     }
 
     // Smart Self-Healing (Outside the BEGIN block so it doesn't poison the transaction if it fails)
     if (!treatment_id) {
-        console.log(`⚠️ Auto-creating missing treatment record for ${patient.first_name}...`);
+        console.log(`Auto-creating missing treatment record for ${patient.first_name}...`);
         try {
             // Try with arv_regimen first
             const newTreatment = await client.query(
@@ -146,9 +146,9 @@ router.post('/record', async (req, res) => {
                 [patient_id, patient.arv_regimen || 'Standard']
             );
             treatment_id = newTreatment.rows[0].treatment_id;
-            console.log('✅ Treatment auto-created successfully.');
+            console.log('Treatment auto-created successfully.');
         } catch (e) {
-            console.log('⚠️ Failed with arv_regimen column, trying without regimen column entirely...', e.message);
+            console.log('Failed with arv_regimen column, trying without regimen column entirely...', e.message);
             try {
                 // Fallback: Just try to get an ID in there without any regimen text
                 const fallbackTreatment = await client.query(
@@ -157,9 +157,9 @@ router.post('/record', async (req, res) => {
                     [patient_id]
                 );
                 treatment_id = fallbackTreatment.rows[0].treatment_id;
-                console.log('✅ Fallback treatment auto-created successfully.');
+                console.log('Fallback treatment auto-created successfully.');
             } catch (fallbackErr) {
-                 console.log('❌ Complete failure to auto-create treatment:', fallbackErr.message);
+                 console.log('Complete failure to auto-create treatment:', fallbackErr.message);
                  // If it truly fails, we set a dummy treatment ID to bypass the block so the nurse can do their job
                  treatment_id = 1; 
             }
@@ -213,7 +213,7 @@ router.post('/record', async (req, res) => {
   } catch (error) {
     // Only rollback if we actually started a transaction, otherwise just catch
     try { await client.query('ROLLBACK'); } catch(e) {}
-    console.error('❌ Error recording pickup:', error.message);
+    console.error('Error recording pickup:', error.message);
     res.status(500).json({
       success: false,
       message: error.message || 'Server error while recording pickup'

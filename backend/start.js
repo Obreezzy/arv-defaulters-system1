@@ -1,5 +1,5 @@
 /**
- * 🚀 ARV SYSTEM STARTUP SCRIPT
+ * ARV SYSTEM STARTUP SCRIPT
  * Launches Flask ML API + Node.js backend together.
  *
  * Project structure:
@@ -198,7 +198,7 @@ const main = async () => {
 
         console.log('');
         console.log(`${c.bold}${c.green}╔══════════════════════════════════════════╗${c.reset}`);
-        console.log(`${c.bold}${c.green}║   ✅  ALL SERVICES RUNNING               ║${c.reset}`);
+        console.log(`${c.bold}${c.green}║       ALL SERVICES RUNNING               ║${c.reset}`);
         console.log(`${c.bold}${c.green}║                                          ║${c.reset}`);
         console.log(`${c.bold}${c.green}║   Flask ML API → http://localhost:5000   ║${c.reset}`);
         console.log(`${c.bold}${c.green}║   Node.js API  → http://localhost:3001   ║${c.reset}`);

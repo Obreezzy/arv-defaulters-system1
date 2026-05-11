@@ -15,12 +15,12 @@ if (!DEVELOPMENT_MODE) {
 const SMS_SERVICE = {
   async sendSMS(phoneNumber, message) {
     try {
-      console.log(`📤 Sending SMS to ${phoneNumber}`);
+      console.log(`Sending SMS to ${phoneNumber}`);
 
       if (DEVELOPMENT_MODE) {
-        console.log('🔧 DEV MODE: Simulating SMS send');
-        console.log(`📱 To: ${phoneNumber}`);
-        console.log(`📝 Message: ${message}`);
+        console.log('DEV MODE: Simulating SMS send');
+        console.log(`To: ${phoneNumber}`);
+        console.log(`Message: ${message}`);
         await new Promise(resolve => setTimeout(resolve, 500));
         return {
           success: true,
@@ -41,7 +41,7 @@ const SMS_SERVICE = {
         to: phoneNumber
       });
 
-      console.log(`✅ SMS sent! SID: ${response.sid}`);
+      console.log(`SMS sent! SID: ${response.sid}`);
       return {
         success: true,
         messageSid: response.sid,
@@ -50,7 +50,7 @@ const SMS_SERVICE = {
       };
 
     } catch (error) {
-      console.error('❌ SMS failed:', error.message);
+      console.error('SMS failed:', error.message);
       return { success: false, error: error.message };
     }
   },

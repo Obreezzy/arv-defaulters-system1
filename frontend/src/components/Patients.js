@@ -319,16 +319,12 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
  className="btn-icon view"
  title="View Details"
  onClick={() => setSelectedPatient(p)}
- >
- 
- </button>
+ ><Eye size={15} /></button>
  <button
  className="btn-icon edit"
  title="Edit Patient"
  onClick={() => setEditingPatient(p)}
- >
- 
- </button>
+ ><Pencil size={15} /></button>
  </div>
  </td>
  </tr>

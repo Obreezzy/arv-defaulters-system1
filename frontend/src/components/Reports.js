@@ -370,7 +370,7 @@ function Reports() {
  return (
  <div className="reports-page">
  <div className="reports-header">
- <h2 className="reports-title"> System Reports & Exports</h2>
+ <h2 className="reports-title">System Reports &amp; Exports</h2>
  <div className="reports-date">As of {new Date().toLocaleDateString()}</div>
  </div>
 
@@ -388,7 +388,7 @@ function Reports() {
  className={`report-type-btn ${reportType === r.key ? 'active' : ''}`}
  onClick={() => setReportType(r.key)}
  >
- <span className="rt-label">{r.label}</span>
+ <span className="rt-label">{r.icon && <span style={{marginRight:'0.4rem'}}>{r.icon}</span>}{r.label}</span>
  <span className="rt-desc">{r.desc}</span>
  </button>
  ))}
@@ -431,7 +431,7 @@ function Reports() {
  else if (reportType === 'excel') generateExcel();
  }}
  >
- {reportType === 'excel' ? ' Export Excel' : ' Generate PDF Report'}
+ {reportType === 'excel' ? <><Download size={16} /> Export Excel</> : <><FileText size={16} /> Generate PDF Report</>}
  </button>
 
  <div className="report-stats-row">

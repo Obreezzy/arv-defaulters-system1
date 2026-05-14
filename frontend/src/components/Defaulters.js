@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { RefreshCw, Loader2, Pill, CheckCircle } from 'lucide-react';
 import './Defaulters.css';
 import { defaultersAPI } from '../services/api';
 import { useNotifications } from '../contexts/NotificationContext';
@@ -49,7 +50,7 @@ function Defaulters({ currentUser }) {
           </p>
         </div>
         <button className="btn-scan" onClick={loadDefaulters} disabled={loading}>
-          <span className="icon">{loading ? '⏳' : '🔄'}</span>
+          {loading ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />}
           {loading ? 'Loading...' : 'Refresh'}
         </button>
       </div>
@@ -58,12 +59,12 @@ function Defaulters({ currentUser }) {
         <div className="table-scroll">
           {loading ? (
             <div className="empty-state">
-              <div className="empty-icon">⏳</div>
+              <div className="empty-icon"><Loader2 size={40} /></div>
               <h3>Loading defaulters...</h3>
             </div>
           ) : defaulters.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-icon">🎉</div>
+              <div className="empty-icon"><CheckCircle size={40} color="#10b981" /></div>
               <h3>No Defaulters Found</h3>
               <p>All patients are currently up to date with their medication pickups.</p>
             </div>
@@ -104,7 +105,7 @@ function Defaulters({ currentUser }) {
                           pickup_frequency: d.pickup_frequency || 30
                         })}
                       >
-                        💊 Record Pickup
+                        <Pill size={15} /> Record Pickup
                       </button>
                     </td>
                   </tr>

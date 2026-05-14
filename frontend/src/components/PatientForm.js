@@ -242,8 +242,6 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
     }
   };
 
-  const risk = calculateLiveRisk();
-
   const lockedStyle = {
     backgroundColor: '#f0fdf4', color: '#166534',
     fontWeight: '600', border: '2px solid #bbf7d0', cursor: 'not-allowed'
@@ -542,29 +540,6 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
                 <input type="text" name="other_chronic_condition"
                   value={formData.other_chronic_condition} onChange={handleChange}
                   placeholder="Specify any other chronic condition" />
-              </div>
-            </div>
-
-            {/* AI Risk Preview */}
-            <div className="risk-preview-bar">
-              <div className="risk-preview-header">
-                <span className="risk-preview-title">🔮 AI Risk Score Preview</span>
-                <span className="risk-preview-badge" style={{ backgroundColor: risk.color }}>
-                  {risk.label} Risk
-                </span>
-              </div>
-              <div className="risk-preview-track">
-                <div className="risk-preview-fill"
-                  style={{ width: risk.score + '%', backgroundColor: risk.color }} />
-              </div>
-              <div className="risk-preview-footer">
-                <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>
-                  Based on distance, age, marital status, treatment supporter &amp; chronic conditions.
-                  Pickup history adds more weight after registration.
-                </span>
-                <span className="risk-preview-score" style={{ color: risk.color }}>
-                  {risk.score}%
-                </span>
               </div>
             </div>
 

@@ -29,7 +29,9 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
     ward:                     patient.ward || '',
     village:                  patient.village || '',
     headman:                  patient.headman || '',
-    distance_from_clinic:     patient.distance_from_clinic || '',
+    distance_from_clinic:     patient.distance_from_clinic != null
+                                ? String(Math.round(parseFloat(patient.distance_from_clinic)))
+                                : '',
     arv_regimen:              patient.arv_regimen || patient.regimen || '',
     emergency_contact_name:   patient.emergency_contact_name || '',
     emergency_contact_phone:  patient.emergency_contact_phone || '',
@@ -521,6 +523,5 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
       </div>
     </div>
   );
-
 
 export default PatientEditForm;

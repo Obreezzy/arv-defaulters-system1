@@ -40,6 +40,9 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
     has_mental_health:        chronicsStr.includes('mental health'),
     has_kidney_disease:       chronicsStr.includes('kidney'),
     other_chronic_condition:  otherStr || '',
+    // Preserve pickup schedule — never overwrite on edit
+    next_pickup_date:         patient.next_pickup_date ? patient.next_pickup_date.split('T')[0] : '',
+    pickup_frequency:         String(patient.pickup_frequency || '30'),
     // ── NEW ML FIELDS ─────────────────────────────────────────────
     marital_status:           patient.marital_status || '',
     treatment_supporter:      patient.treatment_supporter === true || patient.treatment_supporter === 'true',
@@ -89,7 +92,34 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
     }
   };
 
-  const validateForm = () => {
+  const calculateLiveRisk = () => {
+    let score      = 0;
+    const distance = parseInt(formData.distance_from_clinic) || 0;
+    const age      = formData.date_of_birth
+      ? new Date().getFullYear() - new Date(formData.date_of_birth).getFullYear()
+      : 0;
+
+    if (distance > 25)          score += 30;
+    else if (distance > 15)     score += 15;
+    if (age >= 18 && age <= 24) score += 20;
+    else if (age > 70)          score += 10;
+    if (formData.has_hypertension)        score += 10;
+    if (formData.has_diabetes)            score += 10;
+    if (formData.has_tuberculosis)        score += 15;
+    if (formData.has_mental_health)       score += 15;
+    if (formData.has_kidney_disease)      score += 10;
+    if (formData.other_chronic_condition) score += 5;
+    if (formData.marital_status === 'Single' || formData.marital_status === 'Divorced') score += 10;
+    if (!formData.treatment_supporter)    score += 10;
+    if (parseInt(formData.who_clinical_stage) >= 3) score += 10;
+
+    score = Math.min(score, 100);
+    const label = score >= 50 ? 'High' : score >= 25 ? 'Medium' : 'Low';
+    const color = score >= 50 ? '#ef4444' : score >= 25 ? '#f97316' : '#10b981';
+    return { score, label, color };
+  };
+
+
     const fail = (msg) => { setError(msg); return msg; };
     const lettersOnly     = /^[a-zA-Z\s\-'.]+$/;
     const wholeNumberOnly = /^\d+$/;
@@ -151,11 +181,18 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
 
       const payload = {
         ...formData,
-        chronic_diseases:   conditions.join(', '),
-        marital_status:     formData.marital_status,
-        treatment_supporter:formData.treatment_supporter,
-        who_clinical_stage: parseInt(formData.who_clinical_stage) || 2,
-        art_start_date:     formData.art_start_date || null,
+        chronic_diseases:     conditions.join(', '),
+        marital_status:       formData.marital_status,
+        treatment_supporter:  formData.treatment_supporter,
+        who_clinical_stage:   parseInt(formData.who_clinical_stage) || 2,
+        art_start_date:       formData.art_start_date || null,
+        // ✅ Always preserve the next_pickup_date — never let an edit wipe it
+        next_pickup_date:     formData.next_pickup_date || patient.next_pickup_date || null,
+        pickup_frequency:     parseInt(formData.pickup_frequency) || 30,
+        // ✅ Ensure distance is always stored as a whole number integer
+        distance_from_clinic: formData.distance_from_clinic !== ''
+                                ? parseInt(formData.distance_from_clinic, 10)
+                                : null,
       };
 
       const patientId = patient.patient_id || patient.id;
@@ -334,8 +371,9 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
             </div>
             <div className="form-group">
               <label>Distance from Clinic (km)</label>
-              <input type="number" name="distance_from_clinic" value={formData.distance_from_clinic}
-                onChange={handleChange} placeholder="e.g. 5" min="0" step="1" />
+              <input type="text" name="distance_from_clinic" value={formData.distance_from_clinic}
+                onChange={handleChange} placeholder="e.g. 5" />
+              <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>Whole number only (e.g. 9, not 9.5)</small>
             </div>
           </div>
 
@@ -437,6 +475,36 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
             </div>
           </div>
 
+          {/* ── Live Risk Score Preview ── */}
+          {(() => {
+            const risk = calculateLiveRisk();
+            return (
+              <div className="form-section risk-preview-box"
+                style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <span style={{ fontWeight: 700, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    🤖 AI Risk Score Preview
+                  </span>
+                  <span style={{
+                    background: risk.color, color: '#fff', fontWeight: 700,
+                    fontSize: '0.75rem', padding: '0.2rem 0.75rem', borderRadius: '999px'
+                  }}>
+                    {risk.label} Risk
+                  </span>
+                </div>
+                <div style={{ background: '#e5e7eb', borderRadius: '999px', height: '8px', overflow: 'hidden', marginBottom: '0.5rem' }}>
+                  <div style={{ width: risk.score + '%', height: '100%', background: risk.color, borderRadius: '999px', transition: 'width 0.3s ease' }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>
+                    Based on distance, age, marital status, treatment supporter &amp; chronic conditions.
+                  </span>
+                  <span style={{ color: risk.color, fontWeight: 700, fontSize: '1rem' }}>{risk.score}%</span>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* ── Actions ── */}
           <div className="form-actions">
             <button type="button" className="cancel-button" onClick={onClose} disabled={loading}>
@@ -453,6 +521,6 @@ function PatientEditForm({ patient, onClose, onSuccess }) {
       </div>
     </div>
   );
-}
+
 
 export default PatientEditForm;

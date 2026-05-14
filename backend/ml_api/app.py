@@ -203,6 +203,7 @@ def build_feat_dict(patient: dict) -> dict:
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
+        import traceback
         patient = request.get_json()
         if not patient:
             return jsonify({'error': 'No patient data provided'}), 400
@@ -230,7 +231,10 @@ def predict():
         })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"PREDICT ERROR: {error_details}")
+            return jsonify({'error': str(e), 'details': error_details}), 500
 
 
 # ── /health endpoint ──────────────────────────────────────────────

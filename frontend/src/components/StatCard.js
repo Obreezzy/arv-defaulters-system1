@@ -1,9 +1,7 @@
 import React from 'react';
 import './StatCard.css';
 
-// This component shows a statistic card
-// It receives data through "props" (properties)
-function StatCard({ title, value, change, color, icon }) {
+function StatCard({ title, value, change, color, icon, iconNode }) {
   return (
     <div className="stat-card" style={{ borderLeftColor: color }}>
       <div className="stat-content">
@@ -14,9 +12,10 @@ function StatCard({ title, value, change, color, icon }) {
             <p className="stat-change">{change}</p>
           )}
         </div>
-        
         <div className="stat-icon" style={{ backgroundColor: `${color}20` }}>
-          <span style={{ color: color }}>{icon}</span>
+          <span style={{ color: color }}>
+            {iconNode ? iconNode : icon}
+          </span>
         </div>
       </div>
     </div>

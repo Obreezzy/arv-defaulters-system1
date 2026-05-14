@@ -48,8 +48,7 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
  try {
  setAnalyzing(true);
  showToast({ type: 'info', message: ' Running Predictive Analysis...' });
- const alertLocations = alerts.map(a => a.affectedArea);
- await patientsAPI.predictRisk(alertLocations);
+ await patientsAPI.predictRisk([]);
  showToast({ type: 'success', message: 'Prediction Complete! Updating list...' });
  await loadPatients();
  } catch (err) {

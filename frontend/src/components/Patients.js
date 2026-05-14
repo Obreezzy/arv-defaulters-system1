@@ -6,7 +6,6 @@ import { useNotifications } from '../contexts/NotificationContext';
 import PatientFormModal from './PatientForm';
 import PatientDetailsModal from './PatientDetailsModal';
 import PatientEditForm from './PatientEditForm';
-import { getActiveAlerts } from './Dashboard';
 
 function Patients({ initialRiskFilter = 'All', currentUser }) {
  const { showToast } = useNotifications();
@@ -27,7 +26,6 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
 
  useEffect(() => {
  loadPatients();
- setActiveAlerts(getActiveAlerts());
  }, []);
 
  const loadPatients = async () => {
@@ -50,7 +48,6 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
  try {
  setAnalyzing(true);
  showToast({ type: 'info', message: ' Running Predictive Analysis...' });
- const alerts = getActiveAlerts();
  const alertLocations = alerts.map(a => a.affectedArea);
  await patientsAPI.predictRisk(alertLocations);
  showToast({ type: 'success', message: 'Prediction Complete! Updating list...' });

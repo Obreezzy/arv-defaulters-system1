@@ -103,33 +103,6 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
     }
   };
 
-  const calculateLiveRisk = () => {
-    let score      = 0;
-    const distance = parseFloat(formData.distance_from_clinic) || 0;
-    const age      = formData.date_of_birth
-      ? new Date().getFullYear() - new Date(formData.date_of_birth).getFullYear()
-      : 0;
-
-    if (distance > 25)          score += 30;
-    else if (distance > 15)     score += 15;
-    if (age >= 18 && age <= 24) score += 20;
-    else if (age > 70)          score += 10;
-    if (formData.has_hypertension)        score += 10;
-    if (formData.has_diabetes)            score += 10;
-    if (formData.has_tuberculosis)        score += 15;
-    if (formData.has_mental_health)       score += 15;
-    if (formData.has_kidney_disease)      score += 10;
-    if (formData.other_chronic_condition) score += 5;
-    if (formData.marital_status === 'Single' || formData.marital_status === 'Divorced') score += 10;
-    if (!formData.treatment_supporter)    score += 10;
-    if (parseInt(formData.who_clinical_stage) >= 3) score += 10;
-
-    score = Math.min(score, 100);
-    const label = score >= 50 ? 'High' : score >= 25 ? 'Medium' : 'Low';
-    const color = score >= 50 ? '#ef4444' : score >= 25 ? '#f97316' : '#10b981';
-    return { score, label, color };
-  };
-
   const getAutoPickupPreview = () => {
     if (!formData.enrollment_date || !formData.pickup_frequency) return null;
     const d = new Date(formData.enrollment_date);

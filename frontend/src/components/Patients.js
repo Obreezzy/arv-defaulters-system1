@@ -5,7 +5,6 @@ import { useNotifications } from '../contexts/NotificationContext';
 import PatientFormModal from './PatientForm';
 import PatientDetailsModal from './PatientDetailsModal';
 import PatientEditForm from './PatientEditForm';
-import { getActiveAlerts } from './Dashboard';
 
 function Patients({ initialRiskFilter = 'All', currentUser }) {
   const { showToast } = useNotifications();
@@ -18,7 +17,6 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
   const [searchQuery, setSearchQuery]         = useState('');
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [editingPatient, setEditingPatient]   = useState(null);
-  const [activeAlerts, setActiveAlerts]       = useState([]);
 
   useEffect(() => {
     setRiskFilter(initialRiskFilter);
@@ -26,7 +24,6 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
 
   useEffect(() => {
     loadPatients();
-    setActiveAlerts(getActiveAlerts());
   }, []);
 
   const loadPatients = async () => {
@@ -49,9 +46,7 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
     try {
       setAnalyzing(true);
       showToast({ type: 'info', message: '🔮 Running Predictive Analysis...' });
-      const alerts         = getActiveAlerts();
-      const alertLocations = alerts.map(a => a.affectedArea);
-      await patientsAPI.predictRisk(alertLocations);
+      await patientsAPI.predictRisk([]);
       showToast({ type: 'success', message: 'Prediction Complete! Updating list...' });
       await loadPatients();
     } catch (err) {
@@ -61,55 +56,12 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
     }
   };
 
-  // ── Strip location keywords to get the raw value ──
-  // "Ward 14" → "14", "Chigodora Village" → "chigodora"
-  const stripLocationKeywords = (str) => {
-    return (str || '')
-      .toLowerCase()
-      .replace(/\bward\b/gi, '')
-      .replace(/\bvillage\b/gi, '')
-      .replace(/\bdistrict\b/gi, '')
-      .replace(/\bchieftaincy\b/gi, '')
-      .replace(/\bsabhuku\b/gi, '')
-      .replace(/[^a-z0-9\s]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-  };
 
-  // ── Match alert against ONLY the patient's specific location fields ──
-  // Each field is checked individually — not combined into one string
-  // This prevents "14" in "Ward 14" matching patient number "P84955014"
-  const getPatientAlerts = (patient) => {
-    if (!activeAlerts.length) return [];
-
-    // Patient's individual location fields, normalised
-    const patientWard     = stripLocationKeywords(String(patient.ward     || ''));
-    const patientVillage  = stripLocationKeywords(String(patient.village  || ''));
-    const patientDistrict = stripLocationKeywords(String(patient.district || ''));
-    const patientHeadman  = stripLocationKeywords(String(patient.headman  || ''));
-
-    return activeAlerts.filter(alert => {
-      const alertNorm = stripLocationKeywords(alert.affectedArea);
-
-      if (!alertNorm) return false;
-
-      // Check each location field independently with exact or contained match
-      const matchesWard     = patientWard     && (patientWard === alertNorm     || alertNorm === patientWard);
-      const matchesVillage  = patientVillage  && (patientVillage.includes(alertNorm)  || alertNorm.includes(patientVillage));
-      const matchesDistrict = patientDistrict && (patientDistrict.includes(alertNorm) || alertNorm.includes(patientDistrict));
-      const matchesHeadman  = patientHeadman  && (patientHeadman.includes(alertNorm)  || alertNorm.includes(patientHeadman));
-
-      return matchesWard || matchesVillage || matchesDistrict || matchesHeadman;
-    });
-  };
 
   const getEffectiveRisk = (patient) => {
-    const base      = parseFloat(patient.risk_score) || 0;
-    const alerts    = getPatientAlerts(patient);
-    const boost     = alerts.reduce((sum, a) => sum + a.riskBoost, 0);
-    const effective = Math.min(base + boost, 100);
-    const label     = effective >= 50 ? 'High' : effective >= 25 ? 'Medium' : 'Low';
-    return { score: effective, label, boosted: boost > 0, boost };
+    const score = parseFloat(patient.risk_score) || 0;
+    const label = score >= 50 ? 'High' : score >= 25 ? 'Medium' : 'Low';
+    return { score, label, boosted: false, boost: 0 };
   };
 
   const getRiskClass = (label) => {
@@ -156,12 +108,6 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
   return (
     <div className="patients-page">
 
-      {activeAlerts.length > 0 && (
-        <div className="patients-weather-notice">
-          🌧️ <strong>{activeAlerts.length} weather alert(s) active.</strong>{' '}
-          Affected patients show boosted risk scores below.
-        </div>
-      )}
 
       <div className="page-header">
         <div className="header-content">
@@ -251,29 +197,16 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
                   const effective     = getEffectiveRisk(p);
                   const riskClass     = getRiskClass(effective.label);
                   const pickupStatus  = getPickupStatus(p.next_pickup_date);
-                  const patientAlerts = getPatientAlerts(p);
 
                   return (
                     <tr
                       key={p.patient_id}
-                      className={effective.boosted ? 'weather-affected-row' : ''}
+                      
                     >
                       <td>{p.patient_number}</td>
                       <td className="fw-bold">
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                           {p.first_name} {p.last_name}
-                          {effective.boosted && (
-                            <span
-                              className="weather-warning-icon"
-                              title={
-                                'Weather alert: ' +
-                                patientAlerts.map(a => a.label).join(', ') +
-                                ' (+' + effective.boost + '% risk)'
-                              }
-                            >
-                              🌧️
-                            </span>
-                          )}
                         </div>
                       </td>
                       <td>{age}</td>
@@ -305,11 +238,6 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
                             {effective.score}%
                           </span>
                         </div>
-                        {effective.boosted && (
-                          <div className="weather-boost-tag">
-                            +{effective.boost}% weather
-                          </div>
-                        )}
                       </td>
                       <td>
                         <span className={'status-badge ' + (p.is_active ? 'active' : 'inactive')}>

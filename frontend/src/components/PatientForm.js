@@ -103,6 +103,7 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
     }
   };
 
+
   const getAutoPickupPreview = () => {
     if (!formData.enrollment_date || !formData.pickup_frequency) return null;
     const d = new Date(formData.enrollment_date);
@@ -214,6 +215,7 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
       showToast({ type: 'error', message: msg, duration: 5000 });
     }
   };
+
 
   const lockedStyle = {
     backgroundColor: '#f0fdf4', color: '#166534',
@@ -515,7 +517,6 @@ function PatientForm({ onClose, onSuccess, currentUser = null }) {
                   placeholder="Specify any other chronic condition" />
               </div>
             </div>
-
             <div className="form-group" style={{ marginTop: '1rem' }}>
               <label>Additional Risk Notes</label>
               <textarea name="risk_notes" value={formData.risk_notes} onChange={handleChange}

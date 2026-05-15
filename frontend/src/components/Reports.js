@@ -382,11 +382,11 @@ function Reports() {
  {/* Report Type Selector */}
  <div className="report-type-bar">
  {[
- { key: 'summary', label: ' Summary', desc: 'Full system overview' },
- { key: 'patient', label: ' Patient Report', desc: 'Single patient detail' },
- { key: 'highrisk', label: 'High Risk', desc: 'At-risk patients', icon: <AlertTriangle size={16} /> },
- { key: 'defaulters',label: ' Defaulters', desc: 'Missed pickups' },
- { key: 'excel', label: ' Excel Export', desc: 'Full data export' },
+ { key: 'summary',    label: 'Summary',        desc: 'Full system overview',  icon: <FileText size={16} /> },
+ { key: 'patient',    label: 'Patient Report', desc: 'Single patient detail', icon: <Users size={16} /> },
+ { key: 'highrisk',   label: 'High Risk',      desc: 'At-risk patients',      icon: <AlertTriangle size={16} /> },
+ { key: 'defaulters', label: 'Defaulters',     desc: 'Missed pickups',        icon: <TrendingUp size={16} /> },
+ { key: 'excel',      label: 'Excel Export',   desc: 'Full data export',      icon: <FileSpreadsheet size={16} /> },
  ].map(r => (
  <button
  key={r.key}

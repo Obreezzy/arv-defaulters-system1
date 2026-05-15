@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { Bell, MessageSquare, Phone, AlertTriangle, CheckCircle, Zap, XCircle, X, Inbox } from 'lucide-react';
 import { useNotifications } from '../contexts/NotificationContext';
 import './NotificationDropdown.css';
 
@@ -43,13 +44,13 @@ function NotificationDropdown() {
 
   const getNotificationIcon = (type) => {
     switch(type) {
-      case 'sms': return '💬';
-      case 'call': return '📞';
-      case 'defaulter': return '⚠️';
-      case 'success': return '✅';
-      case 'warning': return '⚡';
-      case 'error': return '❌';
-      default: return '🔔';
+      case 'sms':       return <MessageSquare size={16} />;
+      case 'call':      return <Phone size={16} />;
+      case 'defaulter': return <AlertTriangle size={16} />;
+      case 'success':   return <CheckCircle size={16} />;
+      case 'warning':   return <Zap size={16} />;
+      case 'error':     return <XCircle size={16} />;
+      default:          return <Bell size={16} />;
     }
   };
 
@@ -73,7 +74,7 @@ function NotificationDropdown() {
         onClick={handleToggle}
         aria-label="Notifications"
       >
-        <span className="bell-icon">🔔</span>
+        <Bell size={20} />
         {unreadCount > 0 && (
           <span className="notification-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
         )}
@@ -111,7 +112,7 @@ function NotificationDropdown() {
           <div className="notification-list">
             {notifications.length === 0 ? (
               <div className="empty-state">
-                <span className="empty-icon">📭</span>
+                <Inbox size={36} color="#9ca3af" />
                 <p>No notifications</p>
                 <span className="empty-subtitle">You're all caught up!</span>
               </div>
@@ -151,7 +152,7 @@ function NotificationDropdown() {
                     }}
                     aria-label="Remove notification"
                   >
-                    ×
+                    <X size={14} />
                   </button>
                 </div>
               ))

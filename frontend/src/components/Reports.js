@@ -40,12 +40,17 @@ function Reports() {
  setDefaultersData(defaulters);
 
  const active = patients.filter(p => p.is_active !== false).length;
+ const totalSystemPatients = patients.length + defaulters.length;
+ const highRisk =
+   patients.filter(p => p.risk_level?.toLowerCase() === 'high').length +
+   defaulters.filter(d => d.risk_level?.toLowerCase() === 'high').length;
+ const adherenceRate = (active + defaulters.length) > 0
+   ? Math.round((active / (active + defaulters.length)) * 100) : 0;
  setStats({
- totalPatients: patients.length,
- totalDefaulters: defaulters.length,
- highRisk: patients.filter(p => p.risk_level === 'High').length,
- adherenceRate: patients.length > 0
- ? Math.round(((active - defaulters.length) / active) * 100) : 0
+   totalPatients: totalSystemPatients,
+   totalDefaulters: defaulters.length,
+   highRisk,
+   adherenceRate,
  });
  setLoading(false);
  } catch (err) {
@@ -388,7 +393,8 @@ function Reports() {
  className={`report-type-btn ${reportType === r.key ? 'active' : ''}`}
  onClick={() => setReportType(r.key)}
  >
- <span className="rt-label">{r.icon && <span style={{marginRight:'0.4rem'}}>{r.icon}</span>}{r.label}</span>
+ <span className="rt-icon">{r.icon}</span>
+ <span className="rt-label">{r.label}</span>
  <span className="rt-desc">{r.desc}</span>
  </button>
  ))}

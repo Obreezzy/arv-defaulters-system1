@@ -1,55 +1,49 @@
+# backend/ml_api/app.py
 import os
-import joblib
-import pandas as pd
 from flask import Flask, request, jsonify
-import traceback
+from arv_inference import ArvDefaultPredictor, InferenceConfig
+from arv_inference.dtos import PredictRequest
 
 app = Flask(__name__)
 
-# 1. Load the new Histogram Gradient Boosting model
-MODEL_PATH = os.path.join(os.path.dirname(__file__), 'winner_hist_gradient_boosting.joblib')
-model = joblib.load(MODEL_PATH)
+# Load model once at startup
+# arv_inference automatically finds the model inside arv_inference/model/
+predictor = ArvDefaultPredictor(
+    InferenceConfig(threshold_by="catchment_type")  # group-aware thresholds
+)
 
-# 2. THE GREEN LIGHT: Health Check Route
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({
-        "status": "online",
-        "message": "ML Risk Engine is running and model is loaded."
+        "status":  "healthy",
+        "model":   "arv_inference_loaded",
+        "version": "2.0.0"
     }), 200
 
-# 3. The Prediction Route
-@app.route('/predict/defaulters', methods=['POST'])
-def predict_defaulters():
+@app.route('/predict', methods=['POST'])
+def predict():
     try:
-        incoming_data = request.json
-        if not incoming_data or not isinstance(incoming_data, list):
-            return jsonify({"error": "Payload must be a JSON array of patient records"}), 400
+        payload = request.get_json()
+        if not payload:
+            return jsonify({"error": "Missing request body"}), 400
 
-        df = pd.DataFrame(incoming_data)
-        patient_ids = df.pop('patient_id') if 'patient_id' in df.columns else range(len(df))
-
-        predictions = model.predict(df)
-        probabilities = model.predict_proba(df)[:, 1]
-
-        results = []
-        for pid, pred, prob in zip(patient_ids, predictions, probabilities):
-            results.append({
-                "patient_id": pid,
-                "will_default": bool(pred),
-                "risk_score": round(float(prob), 4)
-            })
+        predict_request = PredictRequest.from_dict(payload)
+        response       = predictor.predict(predict_request)
 
         return jsonify({
-            "status": "success", 
-            "total_processed": len(results),
-            "predictions": results
+            "default_probability": float(response.default_probability),
+            "predicted_default":   bool(response.predicted_default),
+            "risk_tier":           str(response.risk_tier.value),   # "low"/"medium"/"high"
+            "threshold_used":      float(response.threshold_used),
+            "threshold_source":    str(response.threshold_source),
+            "index_visit_date":    str(response.index_visit_date) if response.index_visit_date else None,
+            "n_visits_used":       response.n_visits_used,
+            "warnings":            response.warnings or [],
         }), 200
 
     except Exception as e:
-        print(traceback.format_exc())
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)

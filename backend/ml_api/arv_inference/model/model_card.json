@@ -1,0 +1,157 @@
+{
+  "model_name": "hist_gradient_boosting",
+  "model_version": "4b4a5da78b7f",
+  "trained_at": "2026-05-29",
+  "sklearn_version": "1.8.0",
+  "task": "Predict default (>=28 days late / IIT) on a patient's NEXT ARV refill",
+  "label_definition": {
+    "grace_days": 28,
+    "positive_class": "defaulted on next pickup (>=28 days late or LTFU)"
+  },
+  "features": [
+    "sex",
+    "marital_status",
+    "education_level",
+    "occupation",
+    "disclosure_status",
+    "phone_available",
+    "catchment_type",
+    "facility_type",
+    "province",
+    "dsd_model",
+    "regimen",
+    "age",
+    "baseline_cd4",
+    "who_stage",
+    "distance_km",
+    "travel_time_min",
+    "months_on_art",
+    "days_dispensed",
+    "weight_kg",
+    "visit_month",
+    "last_vl",
+    "months_since_vl",
+    "is_youth",
+    "rainy_season",
+    "last_vl_unsuppressed",
+    "ever_unsuppressed",
+    "stockout_this_month",
+    "stockout_trailing3",
+    "prior_gaps",
+    "prior_defaults",
+    "prior_default_rate",
+    "prior_avg_days_late",
+    "prior_max_days_late",
+    "last_gap_days_late",
+    "last_was_late"
+  ],
+  "global_threshold": 0.3408,
+  "group_threshold_by": "catchment_type",
+  "group_thresholds": {
+    "peri_urban": 0.2534,
+    "rural": 0.4773,
+    "urban": 0.2117
+  },
+  "reference_profile": {
+    "age": 35.827515400410675,
+    "baseline_cd4": 370.0,
+    "who_stage": 2.0,
+    "distance_km": 3.873375244960358,
+    "travel_time_min": 26.0,
+    "months_on_art": 5.913272010512483,
+    "days_dispensed": 30.0,
+    "weight_kg": 58.5,
+    "visit_month": 7.0,
+    "last_vl": 134.0,
+    "months_since_vl": 5.519053876478318,
+    "is_youth": 0.0,
+    "rainy_season": 0.0,
+    "last_vl_unsuppressed": 0.0,
+    "ever_unsuppressed": 0.0,
+    "stockout_this_month": 0.0,
+    "stockout_trailing3": 0.0,
+    "prior_gaps": 4.0,
+    "prior_defaults": 0.0,
+    "prior_default_rate": 0.07692307692307693,
+    "prior_avg_days_late": 5.176470588235294,
+    "prior_max_days_late": 34.0,
+    "last_gap_days_late": 2.0,
+    "last_was_late": 0.0,
+    "sex": "F",
+    "marital_status": "married",
+    "education_level": "secondary",
+    "occupation": "farmer",
+    "disclosure_status": "disclosed",
+    "phone_available": "Yes",
+    "catchment_type": "urban",
+    "facility_type": "Urban Clinic",
+    "province": "Matabeleland North",
+    "dsd_model": "facility",
+    "regimen": "TDF/3TC/DTG (TLD)"
+  },
+  "holdout_metrics": {
+    "threshold": 0.5,
+    "roc_auc": 0.8513,
+    "pr_auc": 0.7063,
+    "accuracy": 0.8417,
+    "precision": 0.7743,
+    "recall": 0.5054,
+    "f1": 0.6116,
+    "balanced_accuracy": 0.7286,
+    "specificity": 0.9518,
+    "mcc": 0.5362,
+    "brier": 0.1188,
+    "confusion_matrix": {
+      "tn": 18002,
+      "fp": 912,
+      "fn": 3062,
+      "tp": 3129
+    }
+  },
+  "holdout_auc_bootstrap_ci": {
+    "auc_mean": 0.8514,
+    "ci_low": 0.8455,
+    "ci_high": 0.8569,
+    "n_boot": 500
+  },
+  "stability": {
+    "cv_roc_auc_mean": 0.8567,
+    "cv_roc_auc_std": 0.0022,
+    "holdout_auc_bootstrap_ci": {
+      "auc_mean": 0.8514,
+      "ci_low": 0.8455,
+      "ci_high": 0.8569,
+      "n_boot": 500
+    },
+    "temporal_drift_auc": 0.8202,
+    "note": "temporal_drift_auc trains on the earliest ~80% of patients and tests on the most recent ~20%; harder because new patients have little behavioural history."
+  },
+  "calibration_brier": {
+    "before": 0.1184,
+    "after": 0.1188
+  },
+  "fairness_disparities": {
+    "sex": {
+      "selection_rate_disparity": 1.15,
+      "fnr_disparity": 1.068,
+      "recall_disparity": 1.038
+    },
+    "age_group": {
+      "selection_rate_disparity": 2.791,
+      "fnr_disparity": 2.481,
+      "recall_disparity": 1.473
+    },
+    "catchment_type": {
+      "selection_rate_disparity": 10.451,
+      "fnr_disparity": 11.676,
+      "recall_disparity": 4.219
+    }
+  },
+  "intended_use": "Decision support to DIRECT outreach toward patients at high risk of missing their next ARV refill. Must not be used to deny or deprioritise care.",
+  "limitations": [
+    "Discrimination is strongest for rural patients; urban/peri-urban AUC ~0.75.",
+    "At a single global threshold, urban defaulters are under-flagged (high FNR) due to low urban base rate -- prefer the per-catchment group_thresholds.",
+    "Probabilities are isotonic-calibrated; recalibrate if the population shifts.",
+    "Trained on synthetic data; revalidate on real programme data before deployment."
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "patient": {
+    "patient_id": "PT_DEMO_001",
+    "art_start_date": "2022-03-15",
+    "sex": "F",
+    "date_of_birth": "1990-07-20",
+    "baseline_cd4": 320,
+    "who_stage_at_enrolment": 2,
+    "residence_gps_lat": -18.97,
+    "residence_gps_lon": 32.67,
+    "self_reported_travel_time_min": 75,
+    "phone_available": "Yes",
+    "marital_status": "married",
+    "education_level": "secondary",
+    "occupation": "farmer",
+    "disclosure_status": "disclosed"
+  },
+  "facility": {
+    "facility_id": "FAC_DEMO",
+    "gps_lat": -18.95,
+    "gps_lon": 32.62,
+    "catchment_type": "rural",
+    "facility_type": "Rural Health Centre",
+    "province": "Manicaland"
+  },
+  "visits": [
+    {"visit_date": "2024-09-10", "days_dispensed": 90, "regimen": "TDF/3TC/DTG (TLD)", "dsd_model": "CARG", "viral_load_result": 0, "viral_load_date": "2024-09-10", "weight_kg": 62},
+    {"visit_date": "2024-12-12", "days_dispensed": 90, "regimen": "TDF/3TC/DTG (TLD)", "dsd_model": "CARG", "weight_kg": 63},
+    {"visit_date": "2025-03-28", "days_dispensed": 90, "regimen": "TDF/3TC/DTG (TLD)", "dsd_model": "facility", "weight_kg": 61},
+    {"visit_date": "2025-06-25", "days_dispensed": 90, "regimen": "TDF/3TC/DTG (TLD)", "dsd_model": "facility", "viral_load_result": 850, "viral_load_date": "2025-06-25", "weight_kg": 60}
+  ],
+  "stockout_months": ["2025-09", "2024-11"],
+  "index": -1,
+  "include_features": false
+}

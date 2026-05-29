@@ -1,0 +1,10 @@
+# Pin scikit-learn to the version that trained the bundled model: unpickling a
+# model with a different sklearn version can change behaviour or fail.
+scikit-learn==1.8.0
+numpy>=1.24
+pandas>=2.0
+joblib>=1.3
+
+# optional: REST API (python -m arv_inference.api). The core package + CLI work
+# without it.
+# flask>=3.0

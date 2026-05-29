@@ -8,7 +8,7 @@ console.log(' ARV DEFAULTERS SYSTEM — ORCHESTRATOR');
 console.log('========================================\n');
 
 // 1. Safety Check: Verify the new model file exists
-const modelPath = path.join(__dirname, 'ml_api', 'winner_hist_gradient_boosting.joblib');
+const modelPath = path.join(__dirname, 'ml_api', 'arv_inference', 'model', 'winner_hist_gradient_boosting.joblib');
 
 if (!fs.existsSync(modelPath)) {
     console.error('[ ERROR ] Model file missing!');

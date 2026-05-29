@@ -21,16 +21,15 @@ require('dotenv').config();
 // we reuse connections from the pool (fast!)
 
 const pool = new Pool({
-    host: process.env.DB_HOST,           // Where is database? (localhost)
-    port: process.env.DB_PORT,           // Which port? (5432)
-    database: process.env.DB_NAME,       // Which database? (arv_defaulters_db)
-    user: process.env.DB_USER,           // Username (postgres)
-    password: process.env.DB_PASSWORD,   // Password (your password)
-    
-    // Advanced settings:
-    max: 20,                      // Maximum 20 connections at once
-    idleTimeoutMillis: 30000,     // Close idle connections after 30 seconds
-    connectionTimeoutMillis: 2000, // Wait max 2 seconds to connect
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT,
+    database: process.env.DB_NAME,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    ssl: { rejectUnauthorized: false },
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000,
 });
 
 // ============================================

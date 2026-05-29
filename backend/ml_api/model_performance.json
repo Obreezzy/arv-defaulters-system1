@@ -1,0 +1,1326 @@
+{
+  "generated_at": "2026-05-29T12:54:20.943599+00:00",
+  "steps": {
+    "cleaning": {
+      "visits_duplicates_dropped": 0,
+      "visits_before_art_start_dropped": 0,
+      "n_patients": 20000,
+      "n_visits": 133702,
+      "n_facilities": 60
+    },
+    "feature_ranking_mutual_info": [
+      {
+        "feature": "catchment_type",
+        "mutual_info": 0.17286865179139888
+      },
+      {
+        "feature": "facility_type",
+        "mutual_info": 0.13724891694031394
+      },
+      {
+        "feature": "distance_km",
+        "mutual_info": 0.10148803310491106
+      },
+      {
+        "feature": "prior_avg_days_late",
+        "mutual_info": 0.09416378293777017
+      },
+      {
+        "feature": "prior_default_rate",
+        "mutual_info": 0.09164596749594
+      },
+      {
+        "feature": "prior_gaps",
+        "mutual_info": 0.07817300368905111
+      },
+      {
+        "feature": "months_on_art",
+        "mutual_info": 0.06372547080807611
+      },
+      {
+        "feature": "last_gap_days_late",
+        "mutual_info": 0.058294640367419825
+      },
+      {
+        "feature": "travel_time_min",
+        "mutual_info": 0.05382767995489046
+      },
+      {
+        "feature": "days_dispensed",
+        "mutual_info": 0.049879742371201186
+      },
+      {
+        "feature": "prior_max_days_late",
+        "mutual_info": 0.04504370890321674
+      },
+      {
+        "feature": "last_vl",
+        "mutual_info": 0.04455633773006529
+      },
+      {
+        "feature": "missingindicator_prior_avg_days_late (missing?)",
+        "mutual_info": 0.040715697800740136
+      },
+      {
+        "feature": "missingindicator_last_vl_unsuppressed (missing?)",
+        "mutual_info": 0.04034892775167975
+      },
+      {
+        "feature": "missingindicator_last_was_late (missing?)",
+        "mutual_info": 0.03967011366792805
+      },
+      {
+        "feature": "missingindicator_prior_default_rate (missing?)",
+        "mutual_info": 0.039505011816757474
+      },
+      {
+        "feature": "months_since_vl",
+        "mutual_info": 0.03882439022738349
+      },
+      {
+        "feature": "missingindicator_prior_max_days_late (missing?)",
+        "mutual_info": 0.038720377987152776
+      },
+      {
+        "feature": "missingindicator_last_gap_days_late (missing?)",
+        "mutual_info": 0.03845561973734202
+      },
+      {
+        "feature": "missingindicator_last_vl (missing?)",
+        "mutual_info": 0.03812171024475841
+      }
+    ],
+    "leakage": {
+      "target_in_features": {
+        "forbidden_features_present": [],
+        "ok": true
+      },
+      "univariate_auc_top": [
+        {
+          "feature": "prior_gaps",
+          "univariate_auc": 0.7593,
+          "suspicious": false
+        },
+        {
+          "feature": "months_on_art",
+          "univariate_auc": 0.7235,
+          "suspicious": false
+        },
+        {
+          "feature": "distance_km",
+          "univariate_auc": 0.6823,
+          "suspicious": false
+        },
+        {
+          "feature": "days_dispensed",
+          "univariate_auc": 0.6747,
+          "suspicious": false
+        },
+        {
+          "feature": "travel_time_min",
+          "univariate_auc": 0.655,
+          "suspicious": false
+        },
+        {
+          "feature": "prior_avg_days_late",
+          "univariate_auc": 0.6271,
+          "suspicious": false
+        },
+        {
+          "feature": "prior_default_rate",
+          "univariate_auc": 0.6265,
+          "suspicious": false
+        },
+        {
+          "feature": "last_gap_days_late",
+          "univariate_auc": 0.609,
+          "suspicious": false
+        }
+      ],
+      "grouped_vs_random": {
+        "grouped_auc_mean": 0.8567,
+        "random_auc_mean": 0.8565,
+        "gap": -0.0003,
+        "leakage_suspected": false
+      }
+    },
+    "cross_validation": {
+      "logistic_regression": {
+        "roc_auc_mean": 0.8533,
+        "roc_auc_std": 0.0016,
+        "average_precision_mean": 0.7179,
+        "average_precision_std": 0.0035,
+        "f1_mean": 0.6292,
+        "f1_std": 0.0033,
+        "precision_mean": 0.5577,
+        "precision_std": 0.0037,
+        "recall_mean": 0.7219,
+        "recall_std": 0.0051,
+        "accuracy_mean": 0.7905,
+        "accuracy_std": 0.001,
+        "balanced_accuracy_mean": 0.7674,
+        "balanced_accuracy_std": 0.0019,
+        "fit_time_mean": 4.46
+      },
+      "decision_tree": {
+        "roc_auc_mean": 0.8414,
+        "roc_auc_std": 0.0025,
+        "average_precision_mean": 0.6888,
+        "average_precision_std": 0.003,
+        "f1_mean": 0.6206,
+        "f1_std": 0.0041,
+        "precision_mean": 0.5622,
+        "precision_std": 0.0067,
+        "recall_mean": 0.6927,
+        "recall_std": 0.0074,
+        "accuracy_mean": 0.7914,
+        "accuracy_std": 0.0039,
+        "balanced_accuracy_mean": 0.7582,
+        "balanced_accuracy_std": 0.0022,
+        "fit_time_mean": 4.98
+      },
+      "random_forest": {
+        "roc_auc_mean": 0.851,
+        "roc_auc_std": 0.0021,
+        "average_precision_mean": 0.7113,
+        "average_precision_std": 0.0037,
+        "f1_mean": 0.6324,
+        "f1_std": 0.0039,
+        "precision_mean": 0.5975,
+        "precision_std": 0.0036,
+        "recall_mean": 0.6717,
+        "recall_std": 0.0051,
+        "accuracy_mean": 0.8077,
+        "accuracy_std": 0.0014,
+        "balanced_accuracy_mean": 0.7619,
+        "balanced_accuracy_std": 0.0023,
+        "fit_time_mean": 34.85
+      },
+      "extra_trees": {
+        "roc_auc_mean": 0.8472,
+        "roc_auc_std": 0.0018,
+        "average_precision_mean": 0.7009,
+        "average_precision_std": 0.004,
+        "f1_mean": 0.6245,
+        "f1_std": 0.004,
+        "precision_mean": 0.5729,
+        "precision_std": 0.0043,
+        "recall_mean": 0.6862,
+        "recall_std": 0.0044,
+        "accuracy_mean": 0.7967,
+        "accuracy_std": 0.0009,
+        "balanced_accuracy_mean": 0.7595,
+        "balanced_accuracy_std": 0.0021,
+        "fit_time_mean": 29.37
+      },
+      "hist_gradient_boosting": {
+        "roc_auc_mean": 0.8567,
+        "roc_auc_std": 0.0022,
+        "average_precision_mean": 0.7247,
+        "average_precision_std": 0.0043,
+        "f1_mean": 0.6168,
+        "f1_std": 0.0038,
+        "precision_mean": 0.774,
+        "precision_std": 0.0071,
+        "recall_mean": 0.5127,
+        "recall_std": 0.004,
+        "accuracy_mean": 0.8431,
+        "accuracy_std": 0.0016,
+        "balanced_accuracy_mean": 0.7319,
+        "balanced_accuracy_std": 0.002,
+        "fit_time_mean": 17.14
+      },
+      "mlp": {
+        "roc_auc_mean": 0.8528,
+        "roc_auc_std": 0.0018,
+        "average_precision_mean": 0.7194,
+        "average_precision_std": 0.004,
+        "f1_mean": 0.6094,
+        "f1_std": 0.0076,
+        "precision_mean": 0.7773,
+        "precision_std": 0.0108,
+        "recall_mean": 0.5015,
+        "recall_std": 0.0132,
+        "accuracy_mean": 0.8417,
+        "accuracy_std": 0.0019,
+        "balanced_accuracy_mean": 0.7272,
+        "balanced_accuracy_std": 0.0052,
+        "fit_time_mean": 37.19
+      }
+    }
+  },
+  "observation_end": "2026-01-31",
+  "dataset": {
+    "rows": 126398,
+    "patients": 19588,
+    "prevalence": 0.2464,
+    "n_features": 35
+  },
+  "split": {
+    "train_rows": 101293,
+    "holdout_rows": 25105,
+    "train_prevalence": 0.2463,
+    "holdout_prevalence": 0.2466,
+    "scheme": "patient-grouped random (holdout); see stability for temporal drift"
+  },
+  "selection": {
+    "winner": "hist_gradient_boosting",
+    "requirement_met": true,
+    "rationale": "Highest composite score among models with CV ROC AUC >= 0.85. Ranked on threshold-independent discrimination (ROC AUC + PR AUC) and cross-fold stability; the operating threshold is tuned separately, so F1@0.5 is not used to choose.",
+    "ranking": [
+      {
+        "model": "hist_gradient_boosting",
+        "roc_auc": 0.8567,
+        "roc_auc_std": 0.0022,
+        "pr_auc": 0.7247,
+        "f1": 0.6168,
+        "recall": 0.5127,
+        "precision": 0.774,
+        "stability": 0.956,
+        "meets_roc_min": true,
+        "composite": 0.832
+      },
+      {
+        "model": "logistic_regression",
+        "roc_auc": 0.8533,
+        "roc_auc_std": 0.0016,
+        "pr_auc": 0.7179,
+        "f1": 0.6292,
+        "recall": 0.7219,
+        "precision": 0.5577,
+        "stability": 0.968,
+        "meets_roc_min": true,
+        "composite": 0.8299
+      },
+      {
+        "model": "mlp",
+        "roc_auc": 0.8528,
+        "roc_auc_std": 0.0018,
+        "pr_auc": 0.7194,
+        "f1": 0.6094,
+        "recall": 0.5015,
+        "precision": 0.7773,
+        "stability": 0.964,
+        "meets_roc_min": true,
+        "composite": 0.8295
+      },
+      {
+        "model": "random_forest",
+        "roc_auc": 0.851,
+        "roc_auc_std": 0.0021,
+        "pr_auc": 0.7113,
+        "f1": 0.6324,
+        "recall": 0.6717,
+        "precision": 0.5975,
+        "stability": 0.958,
+        "meets_roc_min": true,
+        "composite": 0.8251
+      },
+      {
+        "model": "extra_trees",
+        "roc_auc": 0.8472,
+        "roc_auc_std": 0.0018,
+        "pr_auc": 0.7009,
+        "f1": 0.6245,
+        "recall": 0.6862,
+        "precision": 0.5729,
+        "stability": 0.964,
+        "meets_roc_min": false,
+        "composite": 0.8208
+      },
+      {
+        "model": "decision_tree",
+        "roc_auc": 0.8414,
+        "roc_auc_std": 0.0025,
+        "pr_auc": 0.6888,
+        "f1": 0.6206,
+        "recall": 0.6927,
+        "precision": 0.5622,
+        "stability": 0.95,
+        "meets_roc_min": false,
+        "composite": 0.8119
+      }
+    ]
+  },
+  "operating_threshold_best_f1": 0.3408,
+  "holdout": {
+    "at_threshold_0.5": {
+      "threshold": 0.5,
+      "roc_auc": 0.8513,
+      "pr_auc": 0.7063,
+      "accuracy": 0.8417,
+      "precision": 0.7743,
+      "recall": 0.5054,
+      "f1": 0.6116,
+      "balanced_accuracy": 0.7286,
+      "specificity": 0.9518,
+      "mcc": 0.5362,
+      "brier": 0.1188,
+      "confusion_matrix": {
+        "tn": 18002,
+        "fp": 912,
+        "fn": 3062,
+        "tp": 3129
+      }
+    },
+    "at_threshold_best_f1": {
+      "threshold": 0.3266,
+      "roc_auc": 0.8513,
+      "pr_auc": 0.7063,
+      "accuracy": 0.8223,
+      "precision": 0.6403,
+      "recall": 0.6379,
+      "f1": 0.6391,
+      "balanced_accuracy": 0.7603,
+      "specificity": 0.8827,
+      "mcc": 0.5213,
+      "brier": 0.1188,
+      "confusion_matrix": {
+        "tn": 16696,
+        "fp": 2218,
+        "fn": 2242,
+        "tp": 3949
+      }
+    },
+    "prevalence": 0.2466,
+    "n": 25105,
+    "at_tuned_threshold": {
+      "threshold": 0.3408,
+      "roc_auc": 0.8513,
+      "pr_auc": 0.7063,
+      "accuracy": 0.8223,
+      "precision": 0.6404,
+      "recall": 0.6377,
+      "f1": 0.639,
+      "balanced_accuracy": 0.7602,
+      "specificity": 0.8828,
+      "mcc": 0.5212,
+      "brier": 0.1188,
+      "confusion_matrix": {
+        "tn": 16697,
+        "fp": 2217,
+        "fn": 2243,
+        "tp": 3948
+      }
+    },
+    "curves": {
+      "roc": {
+        "fpr": [
+          0.0,
+          0.0,
+          0.0,
+          0.0001,
+          0.0001,
+          0.001,
+          0.001,
+          0.0023,
+          0.0029,
+          0.0029,
+          0.0066,
+          0.0082,
+          0.0082,
+          0.0083,
+          0.0153,
+          0.0242,
+          0.0243,
+          0.0247,
+          0.0247,
+          0.0267,
+          0.0267,
+          0.0268,
+          0.0268,
+          0.0328,
+          0.0376,
+          0.0377,
+          0.0377,
+          0.0383,
+          0.0384,
+          0.0482,
+          0.0482,
+          0.0482,
+          0.0483,
+          0.0613,
+          0.0613,
+          0.0614,
+          0.0634,
+          0.0636,
+          0.0636,
+          0.0636,
+          0.0636,
+          0.064,
+          0.0641,
+          0.0915,
+          0.1172,
+          0.1173,
+          0.1173,
+          0.1173,
+          0.1286,
+          0.145,
+          0.1451,
+          0.1674,
+          0.1804,
+          0.1867,
+          0.2396,
+          0.2594,
+          0.2995,
+          0.2996,
+          0.3015,
+          0.3033,
+          0.3422,
+          0.3685,
+          0.3813,
+          0.3814,
+          0.4,
+          0.4,
+          0.4204,
+          0.4665,
+          0.4667,
+          0.4682,
+          0.4683,
+          0.5193,
+          0.5194,
+          0.5631,
+          0.5633,
+          0.5676,
+          0.632,
+          0.6325,
+          0.6756,
+          0.686,
+          0.7069,
+          0.8495,
+          0.8496,
+          0.8496,
+          0.8497,
+          0.8825,
+          0.8826,
+          0.8958,
+          0.8958,
+          0.9189,
+          0.9387,
+          0.9387,
+          0.9574,
+          0.9574,
+          0.9965,
+          1.0
+        ],
+        "tpr": [
+          0.0,
+          0.022,
+          0.0225,
+          0.0405,
+          0.0407,
+          0.0938,
+          0.094,
+          0.1344,
+          0.1555,
+          0.1559,
+          0.2329,
+          0.2612,
+          0.2615,
+          0.2615,
+          0.3356,
+          0.4012,
+          0.4012,
+          0.4037,
+          0.4038,
+          0.4141,
+          0.4143,
+          0.4143,
+          0.4151,
+          0.4505,
+          0.4741,
+          0.4741,
+          0.4742,
+          0.475,
+          0.475,
+          0.5052,
+          0.5052,
+          0.5054,
+          0.5054,
+          0.5422,
+          0.5426,
+          0.5426,
+          0.5469,
+          0.5469,
+          0.5471,
+          0.5471,
+          0.5474,
+          0.5477,
+          0.5477,
+          0.5986,
+          0.6377,
+          0.6377,
+          0.6379,
+          0.6379,
+          0.6537,
+          0.6718,
+          0.6718,
+          0.6965,
+          0.7097,
+          0.717,
+          0.7663,
+          0.7803,
+          0.8102,
+          0.8102,
+          0.8115,
+          0.8123,
+          0.8361,
+          0.852,
+          0.8583,
+          0.8583,
+          0.8651,
+          0.8653,
+          0.8772,
+          0.899,
+          0.899,
+          0.8995,
+          0.8995,
+          0.9191,
+          0.9191,
+          0.9368,
+          0.9368,
+          0.9381,
+          0.9586,
+          0.9586,
+          0.969,
+          0.9706,
+          0.9746,
+          0.9924,
+          0.9924,
+          0.9926,
+          0.9926,
+          0.9943,
+          0.9943,
+          0.9958,
+          0.9958,
+          0.9976,
+          0.9982,
+          0.9982,
+          0.999,
+          0.999,
+          1.0,
+          1.0
+        ]
+      },
+      "pr": {
+        "recall": [
+          1.0,
+          1.0,
+          0.999,
+          0.999,
+          0.9982,
+          0.9982,
+          0.9976,
+          0.9958,
+          0.9958,
+          0.9943,
+          0.9943,
+          0.9943,
+          0.9926,
+          0.9926,
+          0.9926,
+          0.9924,
+          0.9924,
+          0.9924,
+          0.9924,
+          0.9746,
+          0.9706,
+          0.969,
+          0.9586,
+          0.9586,
+          0.9586,
+          0.9586,
+          0.9586,
+          0.9586,
+          0.9586,
+          0.9586,
+          0.9586,
+          0.9586,
+          0.9586,
+          0.9586,
+          0.9381,
+          0.9368,
+          0.9368,
+          0.9368,
+          0.9368,
+          0.9368,
+          0.9368,
+          0.9191,
+          0.9191,
+          0.8995,
+          0.8995,
+          0.8995,
+          0.8995,
+          0.899,
+          0.899,
+          0.899,
+          0.899,
+          0.8772,
+          0.8653,
+          0.8651,
+          0.8583,
+          0.8583,
+          0.8583,
+          0.852,
+          0.8361,
+          0.8123,
+          0.8115,
+          0.8102,
+          0.8102,
+          0.8102,
+          0.7803,
+          0.7663,
+          0.717,
+          0.7097,
+          0.6965,
+          0.6718,
+          0.6718,
+          0.6537,
+          0.6379,
+          0.6379,
+          0.6377,
+          0.6377,
+          0.5986,
+          0.5477,
+          0.5477,
+          0.5474,
+          0.5472,
+          0.5471,
+          0.5471,
+          0.5469,
+          0.5469,
+          0.5469,
+          0.5426,
+          0.5426,
+          0.5426,
+          0.5424,
+          0.5422,
+          0.5054,
+          0.5054,
+          0.5052,
+          0.5052,
+          0.475,
+          0.475,
+          0.4742,
+          0.4741,
+          0.4741,
+          0.4741,
+          0.4505,
+          0.4151,
+          0.415,
+          0.4148,
+          0.4146,
+          0.4145,
+          0.4143,
+          0.4143,
+          0.4143,
+          0.4141,
+          0.4038,
+          0.4037,
+          0.4012,
+          0.4012,
+          0.3356,
+          0.2615,
+          0.2615,
+          0.2613,
+          0.2612,
+          0.2329,
+          0.1559,
+          0.1557,
+          0.1555,
+          0.1344,
+          0.094,
+          0.0938,
+          0.0407,
+          0.0405,
+          0.0225,
+          0.0223,
+          0.0221,
+          0.022,
+          0.0
+        ],
+        "precision": [
+          0.2466,
+          0.2473,
+          0.2546,
+          0.2546,
+          0.2582,
+          0.2582,
+          0.2622,
+          0.2668,
+          0.2668,
+          0.2694,
+          0.2694,
+          0.2694,
+          0.2766,
+          0.2766,
+          0.2766,
+          0.2766,
+          0.2766,
+          0.2766,
+          0.2766,
+          0.311,
+          0.3165,
+          0.3195,
+          0.3316,
+          0.3316,
+          0.3316,
+          0.3316,
+          0.3317,
+          0.3317,
+          0.3317,
+          0.3317,
+          0.3317,
+          0.3317,
+          0.3318,
+          0.3318,
+          0.3511,
+          0.3525,
+          0.3525,
+          0.3525,
+          0.3525,
+          0.3526,
+          0.3526,
+          0.3668,
+          0.3668,
+          0.386,
+          0.386,
+          0.3861,
+          0.3861,
+          0.3867,
+          0.3867,
+          0.3868,
+          0.3868,
+          0.4058,
+          0.4145,
+          0.4145,
+          0.4242,
+          0.4242,
+          0.4243,
+          0.4308,
+          0.4443,
+          0.4671,
+          0.4684,
+          0.4696,
+          0.4696,
+          0.4697,
+          0.4961,
+          0.5114,
+          0.557,
+          0.5629,
+          0.5765,
+          0.6025,
+          0.6026,
+          0.6245,
+          0.6402,
+          0.6403,
+          0.6403,
+          0.6404,
+          0.6818,
+          0.7367,
+          0.7369,
+          0.738,
+          0.738,
+          0.7379,
+          0.7381,
+          0.738,
+          0.7382,
+          0.7383,
+          0.7431,
+          0.7433,
+          0.7435,
+          0.7434,
+          0.7434,
+          0.7741,
+          0.7743,
+          0.7743,
+          0.7744,
+          0.802,
+          0.8022,
+          0.8046,
+          0.8046,
+          0.8048,
+          0.805,
+          0.8181,
+          0.8352,
+          0.8352,
+          0.8351,
+          0.8351,
+          0.835,
+          0.835,
+          0.8352,
+          0.8355,
+          0.8355,
+          0.8423,
+          0.8423,
+          0.844,
+          0.8443,
+          0.8779,
+          0.9116,
+          0.9121,
+          0.9121,
+          0.912,
+          0.9202,
+          0.947,
+          0.947,
+          0.9469,
+          0.9509,
+          0.9684,
+          0.9683,
+          0.9921,
+          0.9921,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    "auc_bootstrap_ci": {
+      "auc_mean": 0.8514,
+      "ci_low": 0.8455,
+      "ci_high": 0.8569,
+      "n_boot": 500
+    }
+  },
+  "calibration": {
+    "before": {
+      "mean_predicted": [
+        0.0192,
+        0.0406,
+        0.0674,
+        0.1022,
+        0.1332,
+        0.1703,
+        0.2277,
+        0.3279,
+        0.5574,
+        0.8642
+      ],
+      "fraction_positive": [
+        0.0155,
+        0.0335,
+        0.0601,
+        0.1092,
+        0.1306,
+        0.1673,
+        0.2263,
+        0.3043,
+        0.5514,
+        0.8678
+      ],
+      "brier": 0.1184
+    },
+    "after": {
+      "mean_predicted": [
+        0.0125,
+        0.0372,
+        0.0699,
+        0.1113,
+        0.1329,
+        0.1775,
+        0.233,
+        0.3267,
+        0.5921,
+        0.9033
+      ],
+      "fraction_positive": [
+        0.0159,
+        0.0395,
+        0.079,
+        0.1129,
+        0.1342,
+        0.1732,
+        0.2297,
+        0.3202,
+        0.5872,
+        0.8779
+      ],
+      "brier": 0.1188
+    }
+  },
+  "stability": {
+    "cv_roc_auc_mean": 0.8567,
+    "cv_roc_auc_std": 0.0022,
+    "holdout_auc_bootstrap_ci": {
+      "auc_mean": 0.8514,
+      "ci_low": 0.8455,
+      "ci_high": 0.8569,
+      "n_boot": 500
+    },
+    "temporal_drift_auc": 0.8202,
+    "note": "temporal_drift_auc trains on the earliest ~80% of patients and tests on the most recent ~20%; harder because new patients have little behavioural history."
+  },
+  "fairness": {
+    "sex": {
+      "levels": [
+        {
+          "level": "F",
+          "n": 15991,
+          "prevalence": 0.2335,
+          "roc_auc": 0.8502,
+          "selection_rate": 0.2329,
+          "recall_tpr": 0.6283,
+          "fpr": 0.1124,
+          "fnr": 0.3717,
+          "ppv": 0.63
+        },
+        {
+          "level": "M",
+          "n": 9114,
+          "prevalence": 0.2696,
+          "roc_auc": 0.8518,
+          "selection_rate": 0.2678,
+          "recall_tpr": 0.652,
+          "fpr": 0.126,
+          "fnr": 0.348,
+          "ppv": 0.6563
+        }
+      ],
+      "selection_rate_disparity": 1.15,
+      "fnr_disparity": 1.068,
+      "recall_disparity": 1.038
+    },
+    "age_group": {
+      "levels": [
+        {
+          "level": "adult_25_34",
+          "n": 6626,
+          "prevalence": 0.2437,
+          "roc_auc": 0.8573,
+          "selection_rate": 0.2299,
+          "recall_tpr": 0.6372,
+          "fpr": 0.0986,
+          "fnr": 0.3628,
+          "ppv": 0.6756
+        },
+        {
+          "level": "adult_35_49",
+          "n": 9530,
+          "prevalence": 0.2335,
+          "roc_auc": 0.8499,
+          "selection_rate": 0.2281,
+          "recall_tpr": 0.6148,
+          "fpr": 0.1103,
+          "fnr": 0.3852,
+          "ppv": 0.6293
+        },
+        {
+          "level": "child",
+          "n": 2154,
+          "prevalence": 0.2433,
+          "roc_auc": 0.8416,
+          "selection_rate": 0.2502,
+          "recall_tpr": 0.6393,
+          "fpr": 0.1252,
+          "fnr": 0.3607,
+          "ppv": 0.6215
+        },
+        {
+          "level": "older_50plus",
+          "n": 3674,
+          "prevalence": 0.2088,
+          "roc_auc": 0.8422,
+          "selection_rate": 0.2001,
+          "recall_tpr": 0.5867,
+          "fpr": 0.098,
+          "fnr": 0.4133,
+          "ppv": 0.6122
+        },
+        {
+          "level": "unknown",
+          "n": 1608,
+          "prevalence": 0.2475,
+          "roc_auc": 0.828,
+          "selection_rate": 0.217,
+          "recall_tpr": 0.5578,
+          "fpr": 0.105,
+          "fnr": 0.4422,
+          "ppv": 0.6361
+        },
+        {
+          "level": "youth_15_24",
+          "n": 1513,
+          "prevalence": 0.4375,
+          "roc_auc": 0.8332,
+          "selection_rate": 0.5585,
+          "recall_tpr": 0.8218,
+          "fpr": 0.3537,
+          "fnr": 0.1782,
+          "ppv": 0.6438
+        }
+      ],
+      "selection_rate_disparity": 2.791,
+      "fnr_disparity": 2.481,
+      "recall_disparity": 1.473
+    },
+    "catchment_type": {
+      "levels": [
+        {
+          "level": "peri_urban",
+          "n": 1446,
+          "prevalence": 0.2552,
+          "roc_auc": 0.7518,
+          "selection_rate": 0.2884,
+          "recall_tpr": 0.5285,
+          "fpr": 0.2061,
+          "fnr": 0.4715,
+          "ppv": 0.4676
+        },
+        {
+          "level": "rural",
+          "n": 6211,
+          "prevalence": 0.5574,
+          "roc_auc": 0.861,
+          "selection_rate": 0.7295,
+          "recall_tpr": 0.9333,
+          "fpr": 0.4729,
+          "fnr": 0.0667,
+          "ppv": 0.7131
+        },
+        {
+          "level": "urban",
+          "n": 17448,
+          "prevalence": 0.1353,
+          "roc_auc": 0.7558,
+          "selection_rate": 0.0698,
+          "recall_tpr": 0.2212,
+          "fpr": 0.0461,
+          "fnr": 0.7788,
+          "ppv": 0.4289
+        }
+      ],
+      "selection_rate_disparity": 10.451,
+      "fnr_disparity": 11.676,
+      "recall_disparity": 4.219
+    }
+  },
+  "explainability": {
+    "permutation_importance_top": [
+      {
+        "feature": "days_dispensed",
+        "importance_mean": 0.0677351871119359,
+        "importance_std": 0.005379723711455303
+      },
+      {
+        "feature": "catchment_type",
+        "importance_mean": 0.04367763654668999,
+        "importance_std": 0.002513627232207207
+      },
+      {
+        "feature": "distance_km",
+        "importance_mean": 0.015649299213541502,
+        "importance_std": 0.001504596078732397
+      },
+      {
+        "feature": "phone_available",
+        "importance_mean": 0.009678910520343753,
+        "importance_std": 0.0008558638992891851
+      },
+      {
+        "feature": "prior_gaps",
+        "importance_mean": 0.007939882643673558,
+        "importance_std": 0.0010379821685223226
+      },
+      {
+        "feature": "is_youth",
+        "importance_mean": 0.0052573621948148515,
+        "importance_std": 0.0008290918185199503
+      },
+      {
+        "feature": "months_on_art",
+        "importance_mean": 0.004894594327216573,
+        "importance_std": 0.001706446421563861
+      },
+      {
+        "feature": "stockout_this_month",
+        "importance_mean": 0.0047831384573139065,
+        "importance_std": 0.0003182209967351291
+      },
+      {
+        "feature": "prior_default_rate",
+        "importance_mean": 0.0044390292899530335,
+        "importance_std": 0.0006944480341727138
+      },
+      {
+        "feature": "last_vl_unsuppressed",
+        "importance_mean": 0.004226304964930261,
+        "importance_std": 0.00039799502080599885
+      },
+      {
+        "feature": "visit_month",
+        "importance_mean": 0.0027648273573894987,
+        "importance_std": 0.0007807968141524889
+      },
+      {
+        "feature": "travel_time_min",
+        "importance_mean": 0.002551009420540362,
+        "importance_std": 0.001100630808720129
+      },
+      {
+        "feature": "last_vl",
+        "importance_mean": 0.0010851910152889,
+        "importance_std": 0.0003126181839510573
+      },
+      {
+        "feature": "months_since_vl",
+        "importance_mean": 0.0009942193361337282,
+        "importance_std": 0.00036604464417348717
+      },
+      {
+        "feature": "sex",
+        "importance_mean": 0.0008760840216917698,
+        "importance_std": 0.0002444357033807716
+      }
+    ],
+    "partial_dependence": [
+      {
+        "feature": "days_dispensed",
+        "grid": [
+          30.0,
+          31.0,
+          32.0,
+          33.0,
+          90.0,
+          91.0,
+          92.0,
+          93.0,
+          180.0,
+          181.0,
+          182.0,
+          183.0
+        ],
+        "average": [
+          0.3069,
+          0.3063,
+          0.302,
+          0.2997,
+          0.1738,
+          0.1691,
+          0.1648,
+          0.162,
+          0.1224,
+          0.1224,
+          0.1224,
+          0.1224
+        ]
+      },
+      {
+        "feature": "distance_km",
+        "grid": [
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN
+        ],
+        "average": [
+          0.2558,
+          0.2558,
+          0.2558,
+          0.2558,
+          0.2558,
+          0.2558,
+          0.2558,
+          0.2558,
+          0.2558,
+          0.2558,
+          0.2558,
+          0.2558,
+          0.2558,
+          0.2558,
+          0.2558,
+          0.2558,
+          0.2558,
+          0.2558,
+          0.2558,
+          0.2558
+        ]
+      }
+    ],
+    "shap_available": true,
+    "shap_top": [
+      {
+        "feature": "catchment_type",
+        "mean_abs_shap": 0.6902590034560204
+      },
+      {
+        "feature": "days_dispensed",
+        "mean_abs_shap": 0.6627058751072897
+      },
+      {
+        "feature": "prior_gaps",
+        "mean_abs_shap": 0.20458656574651396
+      },
+      {
+        "feature": "distance_km",
+        "mean_abs_shap": 0.19749346918875837
+      },
+      {
+        "feature": "phone_available",
+        "mean_abs_shap": 0.19391191993229223
+      },
+      {
+        "feature": "months_on_art",
+        "mean_abs_shap": 0.12593950638245657
+      },
+      {
+        "feature": "last_vl",
+        "mean_abs_shap": 0.12279304707912028
+      },
+      {
+        "feature": "prior_default_rate",
+        "mean_abs_shap": 0.09476244050401662
+      },
+      {
+        "feature": "is_youth",
+        "mean_abs_shap": 0.08632277551216733
+      },
+      {
+        "feature": "travel_time_min",
+        "mean_abs_shap": 0.07861929618449735
+      },
+      {
+        "feature": "stockout_this_month",
+        "mean_abs_shap": 0.07625565188351939
+      },
+      {
+        "feature": "sex",
+        "mean_abs_shap": 0.07478947555265703
+      },
+      {
+        "feature": "missingness_indicators",
+        "mean_abs_shap": 0.0744246236877283
+      },
+      {
+        "feature": "visit_month",
+        "mean_abs_shap": 0.0683428074868284
+      },
+      {
+        "feature": "dsd_model",
+        "mean_abs_shap": 0.04269360635566298
+      }
+    ]
+  },
+  "artifacts": {
+    "model_file": "winner_hist_gradient_boosting.joblib",
+    "model_performance_json": "model_performance.json"
+  },
+  "runtime_seconds": 854.6
+}

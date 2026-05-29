@@ -1,143 +1,97 @@
-// backend/jobs/detectDefaulters.js
-// Automated job to detect defaulters daily
+const axios = require('axios');
+const { sendFollowUp } = require('./sendFollowUps'); 
+const { sendReminder } = require('./sendReminders');
 
-const { query, getClient } = require('../config/db');
+// Import your database models here (e.g., MongoDB/Mongoose, PostgreSQL, etc.)
+// const db = require('./models'); 
 
-const detectDefaultersJob = async () => {
-    const client = await getClient();
-    
+// Ensure this matches the port your Flask app is running on
+const ML_API_URL = process.env.ML_API_URL || 'http://127.0.0.1:5000/predict/defaulters';
+
+async function runDefaulterDetection() {
     try {
-        console.log('\n========================================');
-        console.log('AUTOMATED JOB: Defaulter Detection');
-        console.log('Started:', new Date().toISOString());
-        console.log('========================================\n');
+        console.log('Starting defaulter detection job...');
 
-        await client.query('BEGIN');
+        // 1. Fetch patients from your database
+        // Example: Fetch active patients who have a refill coming up soon
+        // const rawPatientsFromDB = await db.Patient.find({ isActive: true }); 
         
-        const gracePeriod = 3; // Days after missed pickup
+        // --- DUMMY DATA FOR TESTING ---
+        // Replace this array with your actual database query results
+        const rawPatientsFromDB = [
+            {
+                _id: "P-1001",
+                age: 34,
+                genderStr: "Female",
+                distance: 12.5,
+                refillInterval: 3,
+                stockoutRate: 0.05,
+                frailtyScore: 0.2,
+                currentVL: 400,
+                missedBefore: 1
+            }
+        ];
 
-        // Find patients who missed their scheduled pickup date
-        const missedPickups = await client.query(
-            `SELECT DISTINCT ON (mp.patient_id)
-                mp.patient_id,
-                p.patient_number,
-                p.first_name,
-                p.last_name,
-                p.phone_number,
-                p.distance_from_clinic,
-                mp.next_pickup_date as missed_pickup_date,
-                CURRENT_DATE - mp.next_pickup_date as days_overdue,
-                COUNT(d.defaulter_id) FILTER (WHERE d.status = 'returned') as previous_defaults
-             FROM medication_pickups mp
-             JOIN patients p ON mp.patient_id = p.patient_id
-             LEFT JOIN defaulters d ON p.patient_id = d.patient_id
-             WHERE mp.next_pickup_date < CURRENT_DATE - INTERVAL '1 day' * $1
-             AND p.is_active = true
-             AND NOT EXISTS (
-                 SELECT 1 FROM medication_pickups mp2
-                 WHERE mp2.patient_id = mp.patient_id
-                 AND mp2.actual_pickup_date > mp.next_pickup_date
-             )
-             AND NOT EXISTS (
-                 SELECT 1 FROM defaulters d2
-                 WHERE d2.patient_id = mp.patient_id
-                 AND d2.status = 'pending'
-             )
-             GROUP BY mp.patient_id, p.patient_number, p.first_name, p.last_name, 
-                      p.phone_number, p.distance_from_clinic, mp.next_pickup_date
-             ORDER BY mp.patient_id, mp.next_pickup_date DESC`,
-            [gracePeriod]
-        );
-
-        const newDefaulters = [];
-
-        // Flag each patient as defaulter
-        for (const patient of missedPickups.rows) {
-            // Calculate risk level
-            const riskLevel = calculateRiskLevel(
-                patient.days_overdue,
-                patient.previous_defaults,
-                patient.distance_from_clinic
-            );
-
-            // Insert defaulter record
-            const result = await client.query(
-                `INSERT INTO defaulters (
-                    patient_id, missed_pickup_date, days_overdue, risk_level, status
-                ) VALUES ($1, $2, $3, $4, 'pending')
-                RETURNING *`,
-                [patient.patient_id, patient.missed_pickup_date, patient.days_overdue, riskLevel]
-            );
-
-            newDefaulters.push({
-                ...result.rows[0],
-                patient_info: {
-                    patient_number: patient.patient_number,
-                    first_name: patient.first_name,
-                    last_name: patient.last_name,
-                    phone_number: patient.phone_number
-                }
-            });
+        if (rawPatientsFromDB.length === 0) {
+            console.log('No patients found for evaluation.');
+            return;
         }
 
-        await client.query('COMMIT');
+        // 2. MAPPING STEP: Translate DB fields to the exact ML feature keys
+        const formattedPatients = rawPatientsFromDB.map(patient => {
+            return {
+                // Tracking ID (passed to Flask and returned to us)
+                patient_id: patient._id, 
+                
+                // --- THE 8 EXACT REQUIRED KEYS ---
+                distance_to_clinic: patient.distance, 
+                dispensing_interval: patient.refillInterval, 
+                facility_stockout_rate_12m: patient.stockoutRate,  
+                patient_age_years: patient.age, 
+                
+                // Convert gender string to integer (e.g., Female = 0, Male = 1) 
+                // Adjust this logic to match how you trained the model!
+                patient_gender: patient.genderStr === "Male" ? 1 : 0, 
+                
+                patient_frailty_latent: patient.frailtyScore, 
+                viral_load: patient.currentVL,
+                missed_pickups_history: patient.missedBefore
+            };
+        });
 
-        console.log(`Detected ${newDefaulters.length} new defaulters`);
-        
-        if (newDefaulters.length > 0) {
-            console.log('\nNew Defaulters:');
-            newDefaulters.forEach((d, i) => {
-                console.log(`  ${i + 1}. ${d.patient_info.first_name} ${d.patient_info.last_name} (${d.patient_info.patient_number})`);
-                console.log(`     Risk: ${d.risk_level.toUpperCase()} | Days overdue: ${d.days_overdue}`);
-            });
+        console.log(`Sending ${formattedPatients.length} records to ML API for evaluation...`);
+
+        // 3. Send batch to the Flask ML API
+        const response = await axios.post(ML_API_URL, formattedPatients);
+        const { predictions } = response.data;
+
+        // 4. Process the ML results and trigger actions
+        let highRiskCount = 0;
+        let lowRiskCount = 0;
+
+        for (const result of predictions) {
+            if (result.will_default && result.risk_score > 0.85) {
+                console.log(`[ALERT] High risk detected for ${result.patient_id} (Score: ${result.risk_score}). Initiating follow-up.`);
+                
+                // Trigger the high-priority intervention
+                await sendFollowUp(result.patient_id);
+                highRiskCount++;
+                
+                // Optional: Flag patient in database
+                // await db.Patient.updateOne({ _id: result.patient_id }, { requiresOutreach: true, riskScore: result.risk_score });
+            } else {
+                console.log(`[OK] Standard risk for ${result.patient_id} (Score: ${result.risk_score}). Sending standard reminder.`);
+                
+                // Trigger standard SMS reminder
+                await sendReminder(result.patient_id);
+                lowRiskCount++;
+            }
         }
 
-        console.log('\n========================================');
-        console.log('Job completed successfully');
-        console.log('Ended:', new Date().toISOString());
-        console.log('========================================\n');
-
-        return {
-            success: true,
-            detected: newDefaulters.length,
-            defaulters: newDefaulters
-        };
-
+        console.log(`Defaulter detection job completed. High Risk: ${highRiskCount}, Standard Risk: ${lowRiskCount}`);
     } catch (error) {
-        await client.query('ROLLBACK');
-        console.error('Job failed:', error.message);
-        
-        console.log('\n========================================');
-        console.log('Job completed with errors');
-        console.log('Ended:', new Date().toISOString());
-        console.log('========================================\n');
-
-        return {
-            success: false,
-            error: error.message
-        };
-    } finally {
-        client.release();
+        console.error('Error in detectDefaulters job:', error.message);
     }
-};
+}
 
-// Calculate risk level based on multiple factors
-const calculateRiskLevel = (daysOverdue, previousDefaults, distanceFromClinic) => {
-    let score = 0;
-
-    if (daysOverdue >= 14) score += 3;
-    else if (daysOverdue >= 7) score += 2;
-    else score += 1;
-
-    if (previousDefaults >= 3) score += 3;
-    else if (previousDefaults >= 1) score += 2;
-
-    if (distanceFromClinic > 15) score += 2;
-    else if (distanceFromClinic > 5) score += 1;
-
-    if (score >= 6) return 'high';
-    if (score >= 3) return 'medium';
-    return 'low';
-};
-
-module.exports = detectDefaultersJob;
+module.exports = { runDefaulterDetection };

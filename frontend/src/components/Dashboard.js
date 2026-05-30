@@ -33,31 +33,28 @@ function Dashboard({ onNavigate, currentUser }) {
                 defaultersAPI.getAllDefaulters()
             ]);
 
-            // backend returns { success, data: [...] } for patients
             const patients   = patientsRes.data   || patientsRes.patients   || [];
             const defaulters = defaultersRes.defaulters || defaultersRes.data || [];
 
-            const activePatients = patients.filter(p => p.exit_status === 'active' || p.is_active !== false).length;
+            const activePatients = patients.filter(
+                p => p.exit_status === 'active' || p.is_active !== false
+            ).length;
 
-            // risk_level comes through as 'High'/'Medium'/'Low' from patients.js helper
-            const predictedHighRisk =
-                patients.filter(p => p.risk_level?.toLowerCase() === 'high').length +
-                defaulters.filter(d => (d.risk_level || d.risk_tier)?.toLowerCase() === 'high').length;
-
-            const predictedMediumRisk =
-                patients.filter(p => p.risk_level?.toLowerCase() === 'medium').length +
-                defaulters.filter(d => (d.risk_level || d.risk_tier)?.toLowerCase() === 'medium').length;
-
-            const totalSystemPatients = patients.length;
+            // Use ONLY ML risk_tier from risk_scores (via patients.js join)
+            // Never add defaulters risk separately — that uses old days-overdue rules
+            const predictedHighRisk   = patients.filter(p => p.risk_level?.toLowerCase() === 'high').length;
+            const predictedMediumRisk = patients.filter(p => p.risk_level?.toLowerCase() === 'medium').length;
 
             setStats({
-                totalPatients:   totalSystemPatients,
-                activePatients:  activePatients,
+                totalPatients:    patients.length,
+                activePatients:   activePatients,
                 activeDefaulters: defaulters.length,
-                highRisk:        predictedHighRisk,
-                mediumRisk:      predictedMediumRisk,
-                adherenceRate:   (activePatients + defaulters.length) > 0
-                    ? Math.round((activePatients / (activePatients + defaulters.length)) * 100)
+                highRisk:         predictedHighRisk,
+                mediumRisk:       predictedMediumRisk,
+                adherenceRate:    activePatients > 0
+                    ? Math.round(
+                        ((activePatients - defaulters.length) / activePatients) * 100
+                      )
                     : 0
             });
 

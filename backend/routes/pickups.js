@@ -16,14 +16,18 @@ router.use(verifyToken);
 // ─────────────────────────────────────────────────────────────────
 router.post('/record', async (req, res) => {
     const {
-        patient_id, pickup_date, days_dispensed,
+        patient_id, days_dispensed,
         next_pickup_date, regimen, dsd_model,
         viral_load_result, viral_load_date,
-        weight_kg, notes
+        weight_kg, notes,
+        scheduled_next_appt_date,
     } = req.body;
 
+    // Accept visit_date OR pickup_date (frontend sends visit_date)
+    const pickup_date = req.body.visit_date || req.body.pickup_date;
+
     if (!patient_id) return res.status(400).json({ success: false, message: 'patient_id is required' });
-    if (!pickup_date) return res.status(400).json({ success: false, message: 'pickup_date is required' });
+    if (!pickup_date) return res.status(400).json({ success: false, message: 'visit_date is required' });
 
     try {
         // Verify patient exists
@@ -36,7 +40,7 @@ router.post('/record', async (req, res) => {
 
         // Auto-calculate next pickup date if not provided
         const freq = parseInt(days_dispensed) || 30;
-        const computedNext = next_pickup_date || (() => {
+        const computedNext = scheduled_next_appt_date || next_pickup_date || (() => {
             const d = new Date(pickup_date);
             d.setDate(d.getDate() + freq);
             return d.toISOString().split('T')[0];

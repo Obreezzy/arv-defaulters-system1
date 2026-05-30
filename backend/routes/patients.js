@@ -1,368 +1,324 @@
+/**
+ * backend/routes/patients.js
+ * Fully rewritten for the new arv_inference schema.
+ */
+
 const express = require('express');
-const router = express.Router();
-const { query, getClient } = require('../config/db');
+const router  = express.Router();
+const { query } = require('../config/db');
 const { verifyToken } = require('../middleware/auth');
 const { calculateRiskScore } = require('../services/riskEngine');
 
 router.use(verifyToken);
 
-// ==========================================
-// 1. PREDICT RISK FOR ALL PATIENTS — ML Powered
-// ==========================================
-router.post('/predict', async (req, res) => {
-    const activeWeatherAlerts = req.body.activeWeatherAlerts || [];
+// ─────────────────────────────────────────────────────────────────
+// HELPER: derive display name from patient record
+// ─────────────────────────────────────────────────────────────────
+const displayName = (p) => {
+    // New schema has no first_name/last_name — use patient_id as fallback
+    return p.display_name || p.patient_id;
+};
 
-    const client = await getClient();
-    try {
-        await client.query('BEGIN');
+// ─────────────────────────────────────────────────────────────────
+// HELPER: calculate age
+// ─────────────────────────────────────────────────────────────────
+const getAge = (dob) => {
+    if (!dob) return null;
+    return Math.floor((new Date() - new Date(dob)) / (365.25 * 24 * 60 * 60 * 1000));
+};
 
-        const result = await client.query(`
-            SELECT 
-                patient_id, date_of_birth, distance_from_clinic, gender,
-                district, ward, village, headman, chronic_diseases,
-                next_pickup_date, arv_regimen, marital_status,
-                treatment_supporter, who_clinical_stage, art_start_date
-            FROM patients WHERE is_active = true
-        `);
+// ─────────────────────────────────────────────────────────────────
+// HELPER: haversine distance
+// ─────────────────────────────────────────────────────────────────
+const haversineKm = (lat1, lon1, lat2, lon2) => {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return null;
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2)**2 +
+              Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) * Math.sin(dLon/2)**2;
+    return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+};
 
-        let updatedCount = 0;
-
-        for (const patient of result.rows) {
-            try {
-                // Get past defaults count for this patient
-                const historyResult = await client.query(`
-                    SELECT COUNT(*) AS past_defaults
-                    FROM defaulters
-                    WHERE patient_id = $1
-                `, [patient.patient_id]);
-
-                const pickupResult = await client.query(`
-                    SELECT COUNT(*) AS total_pickups
-                    FROM medication_pickups
-                    WHERE patient_id = $1
-                `, [patient.patient_id]);
-
-                const pastDefaults      = parseInt(historyResult.rows[0].past_defaults) || 0;
-                const totalAppointments = parseInt(pickupResult.rows[0].total_pickups) || 1;
-
-                // Calculate days overdue
-                const daysOverdue = patient.next_pickup_date
-                    ? Math.max(0, Math.floor(
-                        (new Date() - new Date(patient.next_pickup_date)) / (1000 * 60 * 60 * 24)
-                      ))
-                    : 0;
-
-                // Build patient object matching riskEngine field names
-                const patientForML = {
-                    ...patient,
-                    chronic_diseases       : patient.chronic_diseases || '',
-                    total_appointments     : totalAppointments,
-                    treatment_supporter    : patient.treatment_supporter || false,
-                    who_clinical_stage     : patient.who_clinical_stage || 2,
-                    art_start_date         : patient.art_start_date || null,
-                    regimen                : patient.arv_regimen || 'TLD',
-                    marital_status         : patient.marital_status || 'Married',
-                };
-
-                // Call ML API
-                const prediction = await calculateRiskScore(
-                    patientForML,
-                    daysOverdue,
-                    pastDefaults,
-                    activeWeatherAlerts
-                );
-
-                // Update patient with ML prediction
-                await client.query(`
-                    UPDATE patients
-                    SET risk_score  = $1,
-                        risk_level  = $2,
-                        risk_factors= $3
-                    WHERE patient_id = $4
-                `, [
-                    prediction.score,
-                    prediction.label,
-                    JSON.stringify(prediction.factors),
-                    patient.patient_id
-                ]);
-
-                updatedCount++;
-
-            } catch (patientErr) {
-                // Log individual patient error but continue with others
-                console.error(`Risk prediction failed for patient ${patient.patient_id}:`, patientErr.message);
-            }
-        }
-
-        await client.query('COMMIT');
-        res.json({
-            success: true,
-            message: `ML risk analysis completed for ${updatedCount} patients`,
-            model: 'LR + RF Ensemble — Chikore Mission Hospital'
-        });
-
-    } catch (err) {
-        await client.query('ROLLBACK');
-        console.error('Prediction error:', err);
-        res.status(500).json({ success: false, message: 'ML Prediction failed: ' + err.message });
-    } finally {
-        client.release();
-    }
-});
-
-// ==========================================
-// 2. GET ALL PATIENTS
-// ==========================================
+// ─────────────────────────────────────────────────────────────────
+// 1. GET ALL PATIENTS
+// ─────────────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
     try {
         const result = await query(`
-            SELECT *, (first_name || ' ' || last_name) AS full_name
-            FROM patients
-            WHERE patient_id NOT IN (
-                SELECT patient_id FROM defaulters WHERE status = 'pending'
-            )
-            ORDER BY risk_score DESC, last_name ASC
+            SELECT
+                p.patient_id,
+                p.facility_id,
+                p.sex,
+                p.date_of_birth,
+                p.art_start_date,
+                p.residence_district,
+                p.residence_gps_lat,
+                p.residence_gps_lon,
+                p.self_reported_travel_time_min,
+                p.phone_available,
+                p.marital_status,
+                p.education_level,
+                p.occupation,
+                p.exit_status,
+                p.who_stage_at_enrolment,
+                p.baseline_cd4,
+                f.facility_name,
+                f.catchment_type,
+                f.gps_lat  AS facility_lat,
+                f.gps_lon  AS facility_lon,
+                -- Latest risk score
+                rs.default_probability,
+                rs.risk_tier,
+                rs.scored_at,
+                -- Latest visit's scheduled next appt
+                lv.scheduled_next_appt_date AS next_pickup_date,
+                lv.visit_date               AS last_visit_date,
+                lv.days_dispensed,
+                lv.regimen
+            FROM patients p
+            LEFT JOIN facilities f  ON p.facility_id = f.facility_id
+            LEFT JOIN LATERAL (
+                SELECT default_probability, risk_tier, scored_at
+                FROM risk_scores
+                WHERE patient_id = p.patient_id
+                ORDER BY scored_at DESC LIMIT 1
+            ) rs ON true
+            LEFT JOIN LATERAL (
+                SELECT scheduled_next_appt_date, visit_date, days_dispensed, regimen
+                FROM visits
+                WHERE patient_id = p.patient_id
+                ORDER BY visit_date DESC LIMIT 1
+            ) lv ON true
+            WHERE p.exit_status = 'active'
+            ORDER BY rs.default_probability DESC NULLS LAST
         `);
-        const data = result.rows.map(p => ({ ...p, risk_factors: parseFactors(p.risk_factors) }));
+
+        const data = result.rows.map(p => ({
+            ...p,
+            age:           getAge(p.date_of_birth),
+            distance_km:   haversineKm(p.residence_gps_lat, p.residence_gps_lon, p.facility_lat, p.facility_lon),
+            // Map new fields to names the frontend already uses
+            risk_score:    p.default_probability != null ? Math.round(p.default_probability * 100) : null,
+            risk_level:    p.risk_tier ? (p.risk_tier.charAt(0).toUpperCase() + p.risk_tier.slice(1)) : null,
+            is_active:     p.exit_status === 'active',
+        }));
+
         res.json({ success: true, data });
     } catch (err) {
+        console.error('GET /patients error:', err);
         res.status(500).json({ success: false, message: err.message });
     }
 });
 
-// ==========================================
-// 3. CREATE PATIENT
-// ==========================================
-router.post('/', async (req, res) => {
-    const {
-        patient_number, first_name, last_name, date_of_birth, gender,
-        phone_number, alternative_phone, email, district, ward, village, headman,
-        distance_from_clinic, enrollment_date, arv_regimen,
-        pickup_frequency, next_pickup_date, is_new_patient,
-        emergency_contact_name, emergency_contact_phone,
-        clinic_number, nurse_number, dispensing_clinic, chronic_diseases,
-        marital_status, treatment_supporter, who_clinical_stage, art_start_date
-    } = req.body;
-
-    const userId = req.user?.id || req.user?.user_id || req.user?.userId || req.user?.sub || req.user?.ID || null;
-    let createdByName = 'Unknown';
-
-    if (userId) {
-        try {
-            const userResult = await query(`SELECT username, first_name, last_name FROM users WHERE user_id = $1`, [userId]);
-            if (userResult.rows.length > 0) {
-                const u = userResult.rows[0];
-                createdByName = (u.first_name && u.last_name) ? `${u.first_name} ${u.last_name}` : u.username;
-            }
-        } catch (e) {
-            console.error('User lookup failed:', e.message);
-        }
-    }
-
-    try {
-        const freq = parseInt(pickup_frequency) || 30;
-        let finalPickupDate = null;
-
-        if (is_new_patient === true || is_new_patient === 'true') {
-            finalPickupDate = next_pickup_date || null;
-        } else {
-            const enrollDate = enrollment_date ? new Date(enrollment_date) : new Date();
-            const calc = new Date(enrollDate);
-            calc.setDate(calc.getDate() + freq);
-            finalPickupDate = calc.toISOString().split('T')[0];
-        }
-
-        const result = await query(
-            `INSERT INTO patients (
-                patient_number, first_name, last_name, date_of_birth, gender,
-                phone_number, alternative_phone, email, district, ward, village, headman,
-                distance_from_clinic, enrollment_date, arv_regimen,
-                pickup_frequency, next_pickup_date,
-                emergency_contact_name, emergency_contact_phone,
-                created_by, clinic_number, nurse_number, dispensing_clinic, chronic_diseases,
-                marital_status, treatment_supporter, who_clinical_stage, art_start_date
-            ) VALUES (
-                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-                $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-                $21,$22,$23,$24,$25,$26,$27,$28
-            ) RETURNING *`,
-            [
-                patient_number || `P-${Date.now()}`, first_name, last_name, date_of_birth, gender,
-                phone_number, alternative_phone || null, email || null, district || null, ward || null,
-                village || null, headman || null, distance_from_clinic || 0, enrollment_date, arv_regimen || null,
-                freq, finalPickupDate, emergency_contact_name || null, emergency_contact_phone || null,
-                createdByName,
-                clinic_number || null, nurse_number || null, dispensing_clinic || null, chronic_diseases || null,
-                marital_status || null, treatment_supporter || false,
-                who_clinical_stage || 2, art_start_date || null
-            ]
-        );
-
-        const newPatient = result.rows[0];
-
-        // Run initial ML risk prediction for new patient
-        try {
-            const initialPrediction = await calculateRiskScore(
-                { ...newPatient, chronic_diseases: chronic_diseases || '' },
-                0,   // 0 days overdue — just registered
-                0,   // 0 past defaults — new patient
-                []
-            );
-
-            await query(`
-                UPDATE patients
-                SET risk_score   = $1,
-                    risk_level   = $2,
-                    risk_factors = $3
-                WHERE patient_id = $4
-            `, [
-                initialPrediction.score,
-                initialPrediction.label,
-                JSON.stringify(initialPrediction.factors),
-                newPatient.patient_id
-            ]);
-
-            newPatient.risk_score   = initialPrediction.score;
-            newPatient.risk_level   = initialPrediction.label;
-            newPatient.risk_factors = initialPrediction.factors;
-
-        } catch (mlErr) {
-            console.warn('Initial ML prediction skipped:', mlErr.message);
-        }
-
-        // Create treatment record
-        if (arv_regimen) {
-            try {
-                await query(
-                    `INSERT INTO patient_treatments (patient_id, arv_regimen, start_date, is_current)
-                     VALUES ($1, $2, CURRENT_DATE, true)`,
-                    [newPatient.patient_id, arv_regimen]
-                );
-            } catch (treatmentErr) {
-                try {
-                    await query(
-                        `INSERT INTO patient_treatments (patient_id, start_date, is_current)
-                         VALUES ($1, CURRENT_DATE, true)`,
-                        [newPatient.patient_id]
-                    );
-                } catch(e) {
-                    console.error('Could not auto-create treatment record:', e.message);
-                }
-            }
-        }
-
-        res.json({ success: true, patient: newPatient });
-    } catch (err) {
-        console.error('Create patient error:', err);
-        res.status(500).json({ success: false, message: err.message });
-    }
-});
-
-// ==========================================
-// 4. GET SINGLE PATIENT
-// ==========================================
+// ─────────────────────────────────────────────────────────────────
+// 2. GET SINGLE PATIENT
+// ─────────────────────────────────────────────────────────────────
 router.get('/:id', async (req, res) => {
     try {
-        const result = await query('SELECT * FROM patients WHERE patient_id = $1', [req.params.id]);
+        const result = await query(`
+            SELECT p.*, f.facility_name, f.catchment_type, f.gps_lat, f.gps_lon,
+                   rs.default_probability, rs.risk_tier, rs.scored_at,
+                   rs.threshold_used, rs.threshold_source
+            FROM patients p
+            LEFT JOIN facilities f ON p.facility_id = f.facility_id
+            LEFT JOIN LATERAL (
+                SELECT default_probability, risk_tier, scored_at, threshold_used, threshold_source
+                FROM risk_scores WHERE patient_id = p.patient_id
+                ORDER BY scored_at DESC LIMIT 1
+            ) rs ON true
+            WHERE p.patient_id = $1
+        `, [req.params.id]);
+
         if (result.rows.length === 0)
             return res.status(404).json({ success: false, message: 'Patient not found' });
+
+        const p = result.rows[0];
+        res.json({
+            success: true,
+            patient: {
+                ...p,
+                age:        getAge(p.date_of_birth),
+                distance_km: haversineKm(p.residence_gps_lat, p.residence_gps_lon, p.gps_lat, p.gps_lon),
+                risk_score: p.default_probability != null ? Math.round(p.default_probability * 100) : null,
+                risk_level: p.risk_tier ? (p.risk_tier.charAt(0).toUpperCase() + p.risk_tier.slice(1)) : null,
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// 3. CREATE PATIENT
+// ─────────────────────────────────────────────────────────────────
+router.post('/', async (req, res) => {
+    const {
+        patient_id, facility_id, sex, date_of_birth, art_start_date,
+        hiv_diagnosis_date, who_stage_at_enrolment, baseline_cd4,
+        residence_province, residence_district, residence_village,
+        residence_ward, residence_gps_lat, residence_gps_lon,
+        self_reported_travel_time_min, phone_available,
+        marital_status, education_level, occupation, disclosure_status,
+    } = req.body;
+
+    if (!art_start_date) {
+        return res.status(400).json({ success: false, message: 'art_start_date is required' });
+    }
+    if (!facility_id) {
+        return res.status(400).json({ success: false, message: 'facility_id is required' });
+    }
+
+    // Auto-generate patient_id if not provided
+    const pid = patient_id || `PT${Date.now()}`;
+
+    try {
+        const result = await query(`
+            INSERT INTO patients (
+                patient_id, facility_id, sex, date_of_birth, art_start_date,
+                hiv_diagnosis_date, who_stage_at_enrolment, baseline_cd4,
+                residence_province, residence_district, residence_village,
+                residence_ward, residence_gps_lat, residence_gps_lon,
+                self_reported_travel_time_min, phone_available,
+                marital_status, education_level, occupation,
+                disclosure_status, exit_status
+            ) VALUES (
+                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+                $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'active'
+            ) RETURNING *
+        `, [
+            pid, facility_id, sex || null, date_of_birth || null, art_start_date,
+            hiv_diagnosis_date || null, who_stage_at_enrolment || null, baseline_cd4 || null,
+            residence_province || null, residence_district || null, residence_village || null,
+            residence_ward || null, residence_gps_lat || null, residence_gps_lon || null,
+            self_reported_travel_time_min || null, phone_available || null,
+            marital_status || null, education_level || null, occupation || null,
+            disclosure_status || null,
+        ]);
+
+        res.status(201).json({ success: true, patient: result.rows[0] });
+    } catch (err) {
+        console.error('CREATE patient error:', err);
+        if (err.code === '23505') {
+            return res.status(409).json({ success: false, message: 'Patient ID already exists' });
+        }
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// 4. UPDATE PATIENT
+// ─────────────────────────────────────────────────────────────────
+router.put('/:id', async (req, res) => {
+    const {
+        sex, date_of_birth, hiv_diagnosis_date, who_stage_at_enrolment,
+        baseline_cd4, residence_province, residence_district, residence_village,
+        residence_ward, residence_gps_lat, residence_gps_lon,
+        self_reported_travel_time_min, phone_available,
+        marital_status, education_level, occupation, disclosure_status,
+    } = req.body;
+
+    try {
+        const result = await query(`
+            UPDATE patients SET
+                sex=$1, date_of_birth=$2, hiv_diagnosis_date=$3,
+                who_stage_at_enrolment=$4, baseline_cd4=$5,
+                residence_province=$6, residence_district=$7,
+                residence_village=$8, residence_ward=$9,
+                residence_gps_lat=$10, residence_gps_lon=$11,
+                self_reported_travel_time_min=$12, phone_available=$13,
+                marital_status=$14, education_level=$15,
+                occupation=$16, disclosure_status=$17
+            WHERE patient_id=$18 RETURNING *
+        `, [
+            sex || null, date_of_birth || null, hiv_diagnosis_date || null,
+            who_stage_at_enrolment || null, baseline_cd4 || null,
+            residence_province || null, residence_district || null,
+            residence_village || null, residence_ward || null,
+            residence_gps_lat || null, residence_gps_lon || null,
+            self_reported_travel_time_min || null, phone_available || null,
+            marital_status || null, education_level || null,
+            occupation || null, disclosure_status || null,
+            req.params.id,
+        ]);
+
+        if (result.rows.length === 0)
+            return res.status(404).json({ success: false, message: 'Patient not found' });
+
         res.json({ success: true, patient: result.rows[0] });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
 });
 
-// ==========================================
-// 5. UPDATE PATIENT
-// ==========================================
-router.put('/:id', async (req, res) => {
-    const {
-        first_name, last_name, date_of_birth, gender, phone_number,
-        alternative_phone, email, district, ward, village, headman, distance_from_clinic,
-        arv_regimen, emergency_contact_name, emergency_contact_phone,
-        next_pickup_date, pickup_frequency, clinic_number, nurse_number, dispensing_clinic,
-        chronic_diseases, marital_status, treatment_supporter, who_clinical_stage, art_start_date
-    } = req.body;
-
+// ─────────────────────────────────────────────────────────────────
+// 5. RUN AI RISK PREDICTION — single patient (button click)
+//    POST /api/patients/:id/predict
+// ─────────────────────────────────────────────────────────────────
+router.post('/:id/predict', async (req, res) => {
+    const { id } = req.params;
     try {
-        const result = await query(
-            `UPDATE patients SET
-                first_name=$1, last_name=$2, date_of_birth=$3, gender=$4,
-                phone_number=$5, alternative_phone=$6, email=$7,
-                district=$8, ward=$9, village=$10, headman=$11,
-                distance_from_clinic=$12, arv_regimen=$13,
-                emergency_contact_name=$14, emergency_contact_phone=$15,
-                next_pickup_date=$16, pickup_frequency=$17,
-                clinic_number=$18, nurse_number=$19, dispensing_clinic=$20,
-                chronic_diseases=$21, marital_status=$22,
-                treatment_supporter=$23, who_clinical_stage=$24, art_start_date=$25
-             WHERE patient_id=$26 RETURNING *`,
-            [
-                first_name, last_name, date_of_birth, gender, phone_number,
-                alternative_phone || null, email || null, district || null,
-                ward || null, village || null, headman || null, distance_from_clinic,
-                arv_regimen || null, emergency_contact_name || null,
-                emergency_contact_phone || null, next_pickup_date || null,
-                pickup_frequency || 30, clinic_number || null, nurse_number || null,
-                dispensing_clinic || null, chronic_diseases || null,
-                marital_status || null, treatment_supporter || false,
-                who_clinical_stage || 2, art_start_date || null,
-                req.params.id
-            ]
-        );
+        const risk = await calculateRiskScore(id);
 
-        const updatedPatient = result.rows[0];
+        // Persist result
+        await query(`
+            INSERT INTO risk_scores
+              (patient_id, default_probability, predicted_default, risk_tier,
+               threshold_used, threshold_source, warnings)
+            VALUES ($1,$2,$3,$4,$5,$6,$7)
+        `, [
+            id, risk.probability, risk.predicted_default,
+            risk.label.toLowerCase(), risk.threshold_used,
+            risk.threshold_source, JSON.stringify(risk.warnings),
+        ]);
 
-        // Re-run ML prediction after patient update
-        try {
-            const historyResult = await query(`
-                SELECT COUNT(*) AS past_defaults FROM defaulters WHERE patient_id = $1
-            `, [req.params.id]);
-
-            const pastDefaults = parseInt(historyResult.rows[0].past_defaults) || 0;
-            const daysOverdue  = next_pickup_date
-                ? Math.max(0, Math.floor(
-                    (new Date() - new Date(next_pickup_date)) / (1000 * 60 * 60 * 24)
-                  ))
-                : 0;
-
-            const prediction = await calculateRiskScore(
-                { ...updatedPatient, chronic_diseases: chronic_diseases || '' },
-                daysOverdue,
-                pastDefaults,
-                []
-            );
-
-            await query(`
-                UPDATE patients
-                SET risk_score   = $1,
-                    risk_level   = $2,
-                    risk_factors = $3
-                WHERE patient_id = $4
-            `, [prediction.score, prediction.label, JSON.stringify(prediction.factors), req.params.id]);
-
-            updatedPatient.risk_score   = prediction.score;
-            updatedPatient.risk_level   = prediction.label;
-            updatedPatient.risk_factors = prediction.factors;
-
-        } catch (mlErr) {
-            console.warn('ML re-prediction skipped after update:', mlErr.message);
-        }
-
-        res.json({ success: true, patient: updatedPatient });
+        res.json({ success: true, patient_id: id, risk });
     } catch (err) {
+        if (err.status === 404) return res.status(404).json({ success: false, message: err.message });
+        if (err.code === 'ECONNREFUSED') return res.status(503).json({ success: false, message: 'ML service unavailable' });
         res.status(500).json({ success: false, message: err.message });
     }
 });
 
-// ==========================================
-// HELPER
-// ==========================================
-const parseFactors = (factors) => {
+// ─────────────────────────────────────────────────────────────────
+// 6. PREDICT ALL PATIENTS (Predict Risks button)
+//    POST /api/patients/predict
+// ─────────────────────────────────────────────────────────────────
+router.post('/predict', async (req, res) => {
     try {
-        if (!factors) return [];
-        return typeof factors === 'string' ? JSON.parse(factors) : factors;
-    } catch (e) { return []; }
-};
+        const activePatients = await query(
+            `SELECT patient_id FROM patients WHERE exit_status = 'active'`
+        );
+        const ids = activePatients.rows.map(r => r.patient_id);
+
+        if (ids.length === 0)
+            return res.json({ success: true, message: 'No active patients to score', updated: 0 });
+
+        const { batchCalculateRisk } = require('../services/riskEngine');
+        const { results, errors } = await batchCalculateRisk(ids);
+
+        for (const r of results) {
+            await query(`
+                INSERT INTO risk_scores
+                  (patient_id, default_probability, predicted_default, risk_tier,
+                   threshold_used, threshold_source, warnings)
+                VALUES ($1,$2,$3,$4,$5,$6,$7)
+            `, [
+                r.patient_id, r.probability, r.predicted_default,
+                r.label.toLowerCase(), r.threshold_used,
+                r.threshold_source, JSON.stringify(r.warnings),
+            ]);
+        }
+
+        res.json({
+            success: true,
+            message: `ML risk analysis completed for ${results.length} patients`,
+            updated: results.length,
+            errors: errors.length,
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
 
 module.exports = router;

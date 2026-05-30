@@ -67,6 +67,7 @@ const schedulerRoutes = require('./routes/scheduler');
 
 // Use routes
 app.use('/api/auth',      authRoutes);
+app.use('/api/facilities', require('./routes/facilities'));
 app.use('/api/patients',  patientRoutes);
 app.use('/api/pickups',   pickupRoutes);
 app.use('/api/defaulters',defaulterRoutes);

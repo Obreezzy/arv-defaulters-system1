@@ -63,10 +63,15 @@ export const patientsAPI = {
       const response = await api.put(`/patients/${id}`, patientData); 
       return response.data; 
   },
-  // ✅ UPDATED: Now accepts activeWeatherAlerts and sends them to the backend
+  //  UPDATED: Now accepts activeWeatherAlerts and sends them to the backend
   predictRisk: async (activeWeatherAlerts = []) => { 
       const response = await api.post('/patients/predict', { activeWeatherAlerts }); 
       return response.data; 
+  },
+  //  NEW: Predict risk for a single patient by ID
+  predictOne: async (patientId) => {
+      const response = await api.post(`/patients/${patientId}/predict`);
+      return response.data;
   }
 };
 
@@ -114,6 +119,22 @@ export const schedulerAPI = {
   },
   getStatus: async () => {
       const response = await api.get('/scheduler/status');
+      return response.data;
+  }
+};
+
+// NEW: Facilities API
+export const facilitiesAPI = {
+  getAll: async () => {
+      const response = await api.get('/facilities');
+      return response.data;
+  },
+  getById: async (id) => {
+      const response = await api.get(`/facilities/${id}`);
+      return response.data;
+  },
+  create: async (facilityData) => {
+      const response = await api.post('/facilities', facilityData);
       return response.data;
   }
 };

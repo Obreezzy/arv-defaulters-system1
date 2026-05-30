@@ -48,6 +48,8 @@ router.get('/', async (req, res) => {
         const result = await query(`
             SELECT
                 p.patient_id,
+                p.first_name,
+                p.last_name,
                 p.facility_id,
                 p.sex,
                 p.date_of_birth,
@@ -157,7 +159,7 @@ router.get('/:id', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────
 router.post('/', async (req, res) => {
     const {
-        patient_id, facility_id, sex, date_of_birth, art_start_date,
+        patient_id, first_name, last_name, facility_id, sex, date_of_birth, art_start_date,
         hiv_diagnosis_date, who_stage_at_enrolment, baseline_cd4,
         residence_province, residence_district, residence_village,
         residence_ward, residence_gps_lat, residence_gps_lon,
@@ -179,7 +181,7 @@ router.post('/', async (req, res) => {
     try {
         const result = await query(`
             INSERT INTO patients (
-                patient_id, facility_id, sex, date_of_birth, art_start_date,
+                patient_id, first_name, last_name, facility_id, sex, date_of_birth, art_start_date,
                 hiv_diagnosis_date, who_stage_at_enrolment, baseline_cd4,
                 residence_province, residence_district, residence_village,
                 residence_ward, residence_gps_lat, residence_gps_lon,
@@ -189,10 +191,10 @@ router.post('/', async (req, res) => {
                 disclosure_status, exit_status
             ) VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-                $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,'active'
+                $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,'active'
             ) RETURNING *
         `, [
-            pid, facility_id, sex || null, date_of_birth || null, art_start_date,
+            pid, first_name || null, last_name || null, facility_id, sex || null, date_of_birth || null, art_start_date,
             hiv_diagnosis_date || null, who_stage_at_enrolment || null, baseline_cd4 || null,
             residence_province || null, residence_district || null, residence_village || null,
             residence_ward || null, residence_gps_lat || null, residence_gps_lon || null,

@@ -34,23 +34,28 @@ function Reports() {
  patientsAPI.getAllPatients(),
  defaultersAPI.getAllDefaulters()
  ]);
- const patients = pRes.patients || pRes.data || [];
+ const patients = pRes.data || pRes.patients || [];
  const defaulters = dRes.defaulters || dRes.data || [];
  setPatientsData(patients);
  setDefaultersData(defaulters);
 
- const active = patients.filter(p => p.is_active !== false).length;
- const totalSystemPatients = patients.length + defaulters.length;
- const highRisk =
-   patients.filter(p => p.risk_level?.toLowerCase() === 'high').length +
-   defaulters.filter(d => d.risk_level?.toLowerCase() === 'high').length;
- const adherenceRate = (active + defaulters.length) > 0
-   ? Math.round((active / (active + defaulters.length)) * 100) : 0;
+ // Total patients = only from patients table (no double counting with defaulters)
+ const totalPatients = patients.length;
+ const activePatients = patients.filter(p => p.exit_status === 'active' || p.is_active !== false).length;
+
+ // High risk = only from ML risk_scores via patients query
+ const highRisk = patients.filter(p => p.risk_level?.toLowerCase() === 'high').length;
+
+ // Adherence = active non-defaulters / active total
+ const adherenceRate = activePatients > 0
+   ? Math.round(((activePatients - defaulters.length) / activePatients) * 100)
+   : 0;
+
  setStats({
-   totalPatients: totalSystemPatients,
+   totalPatients,
    totalDefaulters: defaulters.length,
    highRisk,
-   adherenceRate,
+   adherenceRate: Math.max(0, adherenceRate),
  });
  setLoading(false);
  } catch (err) {
@@ -107,14 +112,14 @@ function Reports() {
 
  autoTable(doc, {
  startY: y1 + 5,
- head: [['Patient', 'ID', 'Days Overdue', 'Risk Level', 'Phone']],
+ head: [['Patient ID', 'District', 'Days Overdue', 'Risk Level', 'Phone Available']],
  body: defaultersData.length > 0
  ? defaultersData.map(d => [
- `${d.first_name} ${d.last_name}`,
- d.patient_number || 'N/A',
+ d.patient_id || 'N/A',
+ d.residence_district || 'N/A',
  `${d.days_overdue || 0} days`,
  d.risk_level?.toUpperCase() || 'N/A',
- d.phone_number || 'N/A'
+ d.phone_available || 'N/A'
  ])
  : [['No active defaulters','','','','']],
  headStyles: { fillColor: [239,68,68] },
@@ -126,9 +131,8 @@ function Reports() {
  showToast({ type: 'success', message: 'Summary PDF generated!' });
  };
 
- // 2. Patient-Specific Report (UPDATED: CLEAN UI, NO EMOJIS) 
  const generatePatientPDF = async () => {
- const patient = patientsData.find(p => p.patient_id === parseInt(selectedPatient));
+ const patient = patientsData.find(p => p.patient_id === selectedPatient);
  if (!patient) { showToast({ type: 'error', message: 'Please select a patient first' }); return; }
 
  setLoading(true);
@@ -143,7 +147,7 @@ function Reports() {
  }
 
  const doc = new jsPDF();
- pdfHeader(doc, `Patient Report: ${patient.first_name} ${patient.last_name}`);
+ pdfHeader(doc, `Patient Report: ${patient.patient_id}`);
 
  const isDefaulter = defaultersData.find(d => d.patient_id === patient.patient_id);
  let startY = 50;
@@ -151,7 +155,6 @@ function Reports() {
  if (isDefaulter) {
  doc.setFontSize(12); doc.setFont('helvetica','bold');
  doc.setTextColor(239,68,68);
- // Removed emojis to prevent PDF garbling
  doc.text(`URGENT: Patient is currently a defaulter (${isDefaulter.days_overdue} days overdue)`, 14, startY);
  doc.setTextColor(0,0,0);
  startY += 10;
@@ -160,23 +163,40 @@ function Reports() {
  doc.setFontSize(13); doc.setFont('helvetica','bold');
  doc.text('Patient Profile', 14, startY);
 
+ const age = patient.date_of_birth
+   ? Math.floor((new Date() - new Date(patient.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000))
+   : 'N/A';
+
  autoTable(doc, {
  startY: startY + 5,
  body: [
- ['Patient Number', patient.patient_number],
- ['Full Name', `${patient.first_name} ${patient.last_name}`],
+ ['Patient ID', patient.patient_id],
+ ['Sex', patient.sex === 'F' ? 'Female' : patient.sex === 'M' ? 'Male' : 'N/A'],
+ ['Age', age],
  ['Date of Birth', fmtDate(patient.date_of_birth)],
- ['Gender', patient.gender || 'N/A'],
- ['Phone', patient.phone_number || 'N/A'],
- ['District', patient.district || 'N/A'],
- ['Ward', patient.ward || 'N/A'],
- ['Village', patient.village || 'N/A'],
- ['Headman / Sabhuku', patient.headman || 'N/A'],
- ['Distance from Clinic', patient.distance_from_clinic ? `${Math.round(patient.distance_from_clinic)} km` : 'N/A'],
- ['ARV Regimen', patient.arv_regimen || 'N/A'],
- ['Pickup Frequency', patient.pickup_frequency ? `Every ${patient.pickup_frequency} days` : 'N/A'],
- ['Risk Level', patient.risk_level || 'N/A'],
- ['Risk Score', patient.risk_score ? `${patient.risk_score}%` : 'N/A']
+ ['Phone Number', patient.phone_number || 'N/A'],
+ ['Phone Available', patient.phone_available || 'N/A'],
+ ['Next of Kin', patient.next_of_kin_name || 'N/A'],
+ ['Next of Kin Phone', patient.next_of_kin_phone || 'N/A'],
+ ['District', patient.residence_district || 'N/A'],
+ ['Province', patient.residence_province || 'N/A'],
+ ['Village', patient.residence_village || 'N/A'],
+ ['Ward', patient.residence_ward || 'N/A'],
+ ['Travel Time to Clinic', patient.self_reported_travel_time_min ? `${patient.self_reported_travel_time_min} min` : 'N/A'],
+ ['Distance from Facility', patient.distance_km != null ? `${patient.distance_km} km` : 'N/A'],
+ ['ART Start Date', fmtDate(patient.art_start_date)],
+ ['Regimen', patient.regimen || 'N/A'],
+ ['WHO Stage', patient.who_stage_at_enrolment || 'N/A'],
+ ['Baseline CD4', patient.baseline_cd4 || 'N/A'],
+ ['Marital Status', patient.marital_status || 'N/A'],
+ ['Education', patient.education_level || 'N/A'],
+ ['Occupation', patient.occupation || 'N/A'],
+ ['Disclosure Status', patient.disclosure_status || 'N/A'],
+ ['Facility', patient.facility_name || 'N/A'],
+ ['Catchment Type', patient.catchment_type || 'N/A'],
+ ['ML Risk Level', patient.risk_level || 'Not scored'],
+ ['ML Risk Score', patient.risk_score != null ? `${patient.risk_score}%` : 'Not scored'],
+ ['Next Pickup', fmtDate(patient.next_pickup_date)],
  ],
  theme: 'striped',
  headStyles: { fillColor: [30,64,175] },
@@ -234,9 +254,9 @@ function Reports() {
  }
  });
 
- doc.save(`Patient_Report_${patient.patient_number}.pdf`);
+ doc.save(`Patient_Report_${patient.patient_id}.pdf`);
  setLoading(false);
- showToast({ type: 'success', message: `Report for ${patient.first_name} generated!` });
+ showToast({ type: 'success', message: `Report for ${patient.patient_id} generated!` });
  };
 
  // 3. High Risk Report 
@@ -251,18 +271,17 @@ function Reports() {
 
  autoTable(doc, {
  startY: 55,
- head: [['Patient', 'ID', 'Risk', 'Score', 'Distance', 'Next Pickup', 'Phone']],
+ head: [['Patient ID', 'Risk', 'Score', 'Distance', 'Next Pickup', 'Phone Available']],
  body: highRisk.length > 0
  ? highRisk.map(p => [
- `${p.first_name} ${p.last_name}`,
- p.patient_number,
+ p.patient_id,
  p.risk_level?.toUpperCase() || 'N/A',
- p.risk_score ? `${p.risk_score}%` : '0%',
- p.distance_from_clinic ? `${Math.round(p.distance_from_clinic)}km` : 'N/A',
+ p.risk_score != null ? `${p.risk_score}%` : '0%',
+ p.distance_km != null ? `${p.distance_km}km` : 'N/A',
  fmtDate(p.next_pickup_date),
- p.phone_number || 'N/A'
+ p.phone_available || 'N/A'
  ])
- : [['No high/medium risk patients found','','','','','','']],
+ : [['No high/medium risk patients found','','','','','']],
  headStyles: { fillColor: [245,158,11] },
  alternateRowStyles: { fillColor: [255,251,235] },
  styles: { fontSize: 9 }
@@ -282,14 +301,14 @@ function Reports() {
 
  autoTable(doc, {
  startY: 55,
- head: [['Patient Name', 'ID', 'Days Overdue', 'Risk', 'Phone', 'Detected']],
+ head: [['Patient ID', 'District', 'Days Overdue', 'Risk', 'Phone Available', 'Detected']],
  body: defaultersData.length > 0
  ? defaultersData.map(d => [
- `${d.first_name} ${d.last_name}`,
- d.patient_number || 'N/A',
+ d.patient_id || 'N/A',
+ d.residence_district || 'N/A',
  `${d.days_overdue || 0} days`,
  d.risk_level?.toUpperCase() || 'N/A',
- d.phone_number || 'N/A',
+ d.phone_available || 'N/A',
  fmtDate(d.detected_date)
  ])
  : [['No active defaulters','','','','','']],
@@ -308,33 +327,44 @@ function Reports() {
 
  // Patients sheet
  const pSheet = XLSX.utils.json_to_sheet(patientsData.map(p => ({
- 'Patient Number': p.patient_number,
- 'First Name': p.first_name,
- 'Last Name': p.last_name,
- 'Gender': p.gender,
+ 'Patient ID': p.patient_id,
+ 'Sex': p.sex === 'F' ? 'Female' : p.sex === 'M' ? 'Male' : 'N/A',
  'Date of Birth': fmtDate(p.date_of_birth),
- 'Phone': p.phone_number,
- 'District': p.district,
- 'Ward': p.ward,
- 'Village': p.village,
- 'Headman': p.headman,
- 'Distance (km)': p.distance_from_clinic,
- 'ARV Regimen': p.arv_regimen,
- 'Risk Level': p.risk_level,
- 'Risk Score': p.risk_score,
+ 'Age': p.age || 'N/A',
+ 'Phone Number': p.phone_number || 'N/A',
+ 'Phone Available': p.phone_available || 'N/A',
+ 'Next of Kin': p.next_of_kin_name || 'N/A',
+ 'Next of Kin Phone': p.next_of_kin_phone || 'N/A',
+ 'Province': p.residence_province || 'N/A',
+ 'District': p.residence_district || 'N/A',
+ 'Village': p.residence_village || 'N/A',
+ 'Ward': p.residence_ward || 'N/A',
+ 'Travel Time (min)': p.self_reported_travel_time_min || 'N/A',
+ 'Distance (km)': p.distance_km || 'N/A',
+ 'ART Start Date': fmtDate(p.art_start_date),
+ 'Regimen': p.regimen || 'N/A',
+ 'WHO Stage': p.who_stage_at_enrolment || 'N/A',
+ 'Baseline CD4': p.baseline_cd4 || 'N/A',
+ 'Marital Status': p.marital_status || 'N/A',
+ 'Education': p.education_level || 'N/A',
+ 'Occupation': p.occupation || 'N/A',
+ 'Disclosure': p.disclosure_status || 'N/A',
+ 'Facility': p.facility_name || 'N/A',
+ 'Catchment': p.catchment_type || 'N/A',
+ 'ML Risk Level': p.risk_level || 'Not scored',
+ 'ML Risk Score': p.risk_score != null ? `${p.risk_score}%` : 'Not scored',
  'Next Pickup': fmtDate(p.next_pickup_date),
- 'Status': p.is_active ? 'Active' : 'Inactive',
- 'Enrollment': fmtDate(p.enrollment_date),
+ 'Status': p.exit_status || 'N/A',
  })));
  XLSX.utils.book_append_sheet(wb, pSheet, 'Patients');
 
  // Defaulters sheet
  const dSheet = XLSX.utils.json_to_sheet(defaultersData.map(d => ({
- 'Patient Name': `${d.first_name} ${d.last_name}`,
- 'Patient ID': d.patient_number,
+ 'Patient ID': d.patient_id,
+ 'District': d.residence_district || 'N/A',
  'Days Overdue': d.days_overdue,
  'Risk Level': d.risk_level,
- 'Phone': d.phone_number,
+ 'Phone Available': d.phone_available || 'N/A',
  'Status': d.status,
  'Detected Date': fmtDate(d.detected_date),
  })));
@@ -409,7 +439,7 @@ function Reports() {
  <option value="">-- Choose a patient --</option>
  {patientsData.map(p => (
  <option key={p.patient_id} value={p.patient_id}>
- {p.first_name} {p.last_name} ({p.patient_number})
+ {p.patient_id} {p.residence_district ? `- ${p.residence_district}` : ''}
  </option>
  ))}
  </select>

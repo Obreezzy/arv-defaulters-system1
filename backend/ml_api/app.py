@@ -12,6 +12,10 @@ predictor = ArvDefaultPredictor(
     InferenceConfig(threshold_by="catchment_type")  # group-aware thresholds
 )
 
+@app.route('/', methods=['GET', 'HEAD'])
+def root():
+    return jsonify({"status": "ok"}), 200
+
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({

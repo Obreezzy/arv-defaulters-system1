@@ -48,6 +48,8 @@ router.get('/', async (req, res) => {
         const result = await query(`
             SELECT
                 p.patient_id,
+                p.first_name,
+                p.last_name,
                 p.facility_id,
                 p.sex,
                 p.date_of_birth,

@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2 } from 'lucide-react';
+import { X, Save, Loader2, User, MapPin, Heart, Building2 } from 'lucide-react';
+import './PatientForm.css';
 import { patientsAPI, facilitiesAPI } from '../services/api';
 import { useNotifications } from '../contexts/NotificationContext';
 
 /**
  * PatientForm.js — Register a new patient using the arv_inference schema.
- * Fields map exactly to the patients table columns.
+ * Uses PatientForm.css for all styling.
  */
 function PatientForm({ onClose, onSuccess, currentUser }) {
     const { showToast } = useNotifications();
     const [saving, setSaving] = useState(false);
     const [facilities, setFacilities] = useState([]);
+    const [success, setSuccess] = useState(false);
 
     const [form, setForm] = useState({
         patient_id:                    '',
@@ -36,7 +38,6 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
     });
 
     useEffect(() => {
-        // Load facilities for dropdown
         const loadFacilities = async () => {
             try {
                 const res = await facilitiesAPI.getAll();
@@ -67,47 +68,55 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
         setSaving(true);
         try {
             await patientsAPI.createPatient(form);
+            setSuccess(true);
             showToast({ type: 'success', message: 'Patient registered successfully!' });
-            onSuccess?.();
-            onClose();
+            setTimeout(() => {
+                onSuccess?.();
+                onClose();
+            }, 1800);
         } catch (err) {
-            showToast({ type: 'error', message: err.message || 'Failed to register patient' });
+            const msg = err.response?.data?.message || err.message || 'Failed to register patient';
+            showToast({ type: 'error', message: msg });
         } finally {
             setSaving(false);
         }
     };
 
-    const inputClass = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500";
-    const labelClass = "block text-sm font-medium text-gray-700 mb-1";
-    const sectionClass = "mb-6";
+    if (success) {
+        return (
+            <div className="form-overlay">
+                <div className="form-modal success-modal">
+                    <div className="success-icon">✅</div>
+                    <h2>Patient Registered!</h2>
+                    <p>The new patient has been added to the system.</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
-        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-            <div className="modal-content" style={{ background: '#fff', borderRadius: '12px', width: '100%', maxWidth: '700px', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div className="form-overlay" onClick={onClose}>
+            <div className="form-modal" onClick={e => e.stopPropagation()}>
 
                 {/* Header */}
-                <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                        <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700 }}>Register New Patient</h2>
-                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#6b7280' }}>All fields with * are required</p>
-                    </div>
-                    <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+                <div className="form-header">
+                    <h2>Register New Patient</h2>
+                    <button className="close-button" onClick={onClose}><X size={18} /></button>
                 </div>
 
-                {/* Form */}
-                <form onSubmit={handleSubmit} style={{ overflowY: 'auto', padding: '1.5rem', flex: 1 }}>
+                <form className="patient-form" onSubmit={handleSubmit}>
 
-                    {/* Section: Identification */}
-                    <div className={sectionClass}>
-                        <h3 style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>Patient Identification</h3>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                            <div>
-                                <label className={labelClass}>Patient ID (auto-generated if blank)</label>
-                                <input name="patient_id" value={form.patient_id} onChange={handleChange} placeholder="e.g. PT000100" className={inputClass} />
+                    {/* Patient Identification */}
+                    <div className="form-section">
+                        <h3 className="section-title"><Building2 size={16} /> Patient Identification</h3>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Patient ID (auto-generated if blank)</label>
+                                <input name="patient_id" value={form.patient_id} onChange={handleChange} placeholder="e.g. PT000100" />
                             </div>
-                            <div>
-                                <label className={labelClass}>Facility *</label>
-                                <select name="facility_id" value={form.facility_id} onChange={handleChange} required className={inputClass}>
+                            <div className="form-group">
+                                <label>Facility <span className="required">*</span></label>
+                                <select name="facility_id" value={form.facility_id} onChange={handleChange} required>
                                     <option value="">Select facility...</option>
                                     {facilities.map(f => (
                                         <option key={f.facility_id} value={f.facility_id}>
@@ -119,25 +128,27 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                         </div>
                     </div>
 
-                    {/* Section: Demographics */}
-                    <div className={sectionClass}>
-                        <h3 style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>Demographics</h3>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                            <div>
-                                <label className={labelClass}>Sex</label>
-                                <select name="sex" value={form.sex} onChange={handleChange} className={inputClass}>
+                    {/* Demographics */}
+                    <div className="form-section">
+                        <h3 className="section-title"><User size={16} /> Demographics</h3>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Sex</label>
+                                <select name="sex" value={form.sex} onChange={handleChange}>
                                     <option value="">Select...</option>
                                     <option value="F">Female</option>
                                     <option value="M">Male</option>
                                 </select>
                             </div>
-                            <div>
-                                <label className={labelClass}>Date of Birth</label>
-                                <input type="date" name="date_of_birth" value={form.date_of_birth} onChange={handleChange} className={inputClass} />
+                            <div className="form-group">
+                                <label>Date of Birth</label>
+                                <input type="date" name="date_of_birth" value={form.date_of_birth} onChange={handleChange} />
                             </div>
-                            <div>
-                                <label className={labelClass}>Marital Status</label>
-                                <select name="marital_status" value={form.marital_status} onChange={handleChange} className={inputClass}>
+                        </div>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Marital Status</label>
+                                <select name="marital_status" value={form.marital_status} onChange={handleChange}>
                                     <option value="">Select...</option>
                                     <option value="single">Single</option>
                                     <option value="married">Married</option>
@@ -146,9 +157,9 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                                     <option value="cohabiting">Cohabiting</option>
                                 </select>
                             </div>
-                            <div>
-                                <label className={labelClass}>Education Level</label>
-                                <select name="education_level" value={form.education_level} onChange={handleChange} className={inputClass}>
+                            <div className="form-group">
+                                <label>Education Level</label>
+                                <select name="education_level" value={form.education_level} onChange={handleChange}>
                                     <option value="">Select...</option>
                                     <option value="none">None</option>
                                     <option value="primary">Primary</option>
@@ -156,9 +167,11 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                                     <option value="tertiary">Tertiary</option>
                                 </select>
                             </div>
-                            <div>
-                                <label className={labelClass}>Occupation</label>
-                                <select name="occupation" value={form.occupation} onChange={handleChange} className={inputClass}>
+                        </div>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Occupation</label>
+                                <select name="occupation" value={form.occupation} onChange={handleChange}>
                                     <option value="">Select...</option>
                                     <option value="farmer">Farmer</option>
                                     <option value="informal_trader">Informal Trader</option>
@@ -168,9 +181,9 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                                     <option value="domestic">Domestic</option>
                                 </select>
                             </div>
-                            <div>
-                                <label className={labelClass}>Phone Available</label>
-                                <select name="phone_available" value={form.phone_available} onChange={handleChange} className={inputClass}>
+                            <div className="form-group">
+                                <label>Phone Available</label>
+                                <select name="phone_available" value={form.phone_available} onChange={handleChange}>
                                     <option value="">Select...</option>
                                     <option value="Yes">Yes</option>
                                     <option value="No">No</option>
@@ -179,21 +192,23 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                         </div>
                     </div>
 
-                    {/* Section: Clinical */}
-                    <div className={sectionClass}>
-                        <h3 style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>Clinical Information</h3>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                            <div>
-                                <label className={labelClass}>ART Start Date *</label>
-                                <input type="date" name="art_start_date" value={form.art_start_date} onChange={handleChange} required className={inputClass} />
+                    {/* Clinical Information */}
+                    <div className="form-section">
+                        <h3 className="section-title"><Heart size={16} /> Clinical Information</h3>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>ART Start Date <span className="required">*</span></label>
+                                <input type="date" name="art_start_date" value={form.art_start_date} onChange={handleChange} required />
                             </div>
-                            <div>
-                                <label className={labelClass}>HIV Diagnosis Date</label>
-                                <input type="date" name="hiv_diagnosis_date" value={form.hiv_diagnosis_date} onChange={handleChange} className={inputClass} />
+                            <div className="form-group">
+                                <label>HIV Diagnosis Date</label>
+                                <input type="date" name="hiv_diagnosis_date" value={form.hiv_diagnosis_date} onChange={handleChange} />
                             </div>
-                            <div>
-                                <label className={labelClass}>WHO Stage at Enrolment</label>
-                                <select name="who_stage_at_enrolment" value={form.who_stage_at_enrolment} onChange={handleChange} className={inputClass}>
+                        </div>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>WHO Stage at Enrolment</label>
+                                <select name="who_stage_at_enrolment" value={form.who_stage_at_enrolment} onChange={handleChange}>
                                     <option value="">Select...</option>
                                     <option value="1">Stage 1</option>
                                     <option value="2">Stage 2</option>
@@ -201,13 +216,15 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                                     <option value="4">Stage 4</option>
                                 </select>
                             </div>
-                            <div>
-                                <label className={labelClass}>Baseline CD4</label>
-                                <input type="number" name="baseline_cd4" value={form.baseline_cd4} onChange={handleChange} placeholder="copies/mL" className={inputClass} />
+                            <div className="form-group">
+                                <label>Baseline CD4</label>
+                                <input type="number" name="baseline_cd4" value={form.baseline_cd4} onChange={handleChange} placeholder="copies/mL" />
                             </div>
-                            <div>
-                                <label className={labelClass}>Disclosure Status</label>
-                                <select name="disclosure_status" value={form.disclosure_status} onChange={handleChange} className={inputClass}>
+                        </div>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Disclosure Status</label>
+                                <select name="disclosure_status" value={form.disclosure_status} onChange={handleChange}>
                                     <option value="">Select...</option>
                                     <option value="disclosed">Disclosed</option>
                                     <option value="not_disclosed">Not Disclosed</option>
@@ -216,53 +233,58 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                         </div>
                     </div>
 
-                    {/* Section: Residence */}
-                    <div className={sectionClass}>
-                        <h3 style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>Residence & Access</h3>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                            <div>
-                                <label className={labelClass}>Province</label>
-                                <input name="residence_province" value={form.residence_province} onChange={handleChange} placeholder="e.g. Manicaland" className={inputClass} />
+                    {/* Residence & Access */}
+                    <div className="form-section">
+                        <h3 className="section-title"><MapPin size={16} /> Residence & Access</h3>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Province</label>
+                                <input name="residence_province" value={form.residence_province} onChange={handleChange} placeholder="e.g. Manicaland" />
                             </div>
-                            <div>
-                                <label className={labelClass}>District</label>
-                                <input name="residence_district" value={form.residence_district} onChange={handleChange} placeholder="e.g. Mutare" className={inputClass} />
+                            <div className="form-group">
+                                <label>District</label>
+                                <input name="residence_district" value={form.residence_district} onChange={handleChange} placeholder="e.g. Mutare" />
                             </div>
-                            <div>
-                                <label className={labelClass}>Village</label>
-                                <input name="residence_village" value={form.residence_village} onChange={handleChange} className={inputClass} />
+                        </div>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Village</label>
+                                <input name="residence_village" value={form.residence_village} onChange={handleChange} />
                             </div>
-                            <div>
-                                <label className={labelClass}>Ward</label>
-                                <input type="number" name="residence_ward" value={form.residence_ward} onChange={handleChange} placeholder="1-34" className={inputClass} />
+                            <div className="form-group">
+                                <label>Ward</label>
+                                <input type="number" name="residence_ward" value={form.residence_ward} onChange={handleChange} placeholder="1-34" />
                             </div>
-                            <div>
-                                <label className={labelClass}>GPS Latitude</label>
-                                <input type="number" step="any" name="residence_gps_lat" value={form.residence_gps_lat} onChange={handleChange} placeholder="-18.97" className={inputClass} />
+                        </div>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>GPS Latitude</label>
+                                <input type="number" step="any" name="residence_gps_lat" value={form.residence_gps_lat} onChange={handleChange} placeholder="-18.97" />
                             </div>
-                            <div>
-                                <label className={labelClass}>GPS Longitude</label>
-                                <input type="number" step="any" name="residence_gps_lon" value={form.residence_gps_lon} onChange={handleChange} placeholder="32.67" className={inputClass} />
+                            <div className="form-group">
+                                <label>GPS Longitude</label>
+                                <input type="number" step="any" name="residence_gps_lon" value={form.residence_gps_lon} onChange={handleChange} placeholder="32.67" />
                             </div>
-                            <div>
-                                <label className={labelClass}>Travel Time to Clinic (minutes)</label>
-                                <input type="number" name="self_reported_travel_time_min" value={form.self_reported_travel_time_min} onChange={handleChange} placeholder="e.g. 45" className={inputClass} />
+                        </div>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Travel Time to Clinic (minutes)</label>
+                                <input type="number" name="self_reported_travel_time_min" value={form.self_reported_travel_time_min} onChange={handleChange} placeholder="e.g. 45" />
                             </div>
                         </div>
                     </div>
 
-                </form>
+                    {/* Actions */}
+                    <div className="form-actions">
+                        <button type="button" className="cancel-button" onClick={onClose} disabled={saving}>
+                            Cancel
+                        </button>
+                        <button type="submit" className="submit-button" disabled={saving}>
+                            {saving ? <><span className="spinner-small"></span>Registering...</> : <><Save size={15} /> Register Patient</>}
+                        </button>
+                    </div>
 
-                {/* Footer */}
-                <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                    <button type="button" onClick={onClose} style={{ padding: '0.5rem 1.25rem', border: '1px solid #d1d5db', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontSize: '0.875rem' }}>
-                        Cancel
-                    </button>
-                    <button onClick={handleSubmit} disabled={saving} style={{ padding: '0.5rem 1.25rem', border: 'none', borderRadius: '8px', background: '#3b82f6', color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        {saving ? <Loader2 size={15} className="spin" /> : <Save size={15} />}
-                        {saving ? 'Registering...' : 'Register Patient'}
-                    </button>
-                </div>
+                </form>
             </div>
         </div>
     );

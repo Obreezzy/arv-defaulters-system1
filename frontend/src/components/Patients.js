@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Eye, Pencil, TrendingUp, UserPlus, Loader2, Brain } from 'lucide-react';
+import { Search, Eye, Pencil, UserPlus, Loader2, Brain } from 'lucide-react';
 import './Patients.css';
 import { patientsAPI } from '../services/api';
 import { useNotifications } from '../contexts/NotificationContext';
@@ -10,13 +10,13 @@ import PatientEditForm from './PatientEditForm';
 function Patients({ initialRiskFilter = 'All', currentUser }) {
     const { showToast } = useNotifications();
 
-    const [patients, setPatients]         = useState([]);
-    const [loading, setLoading]           = useState(true);
-    const [analyzing, setAnalyzing]       = useState(false);
-    const [scoringId, setScoringId]       = useState(null); // single patient scoring
-    const [showModal, setShowModal]       = useState(false);
-    const [riskFilter, setRiskFilter]     = useState(initialRiskFilter);
-    const [searchQuery, setSearchQuery]   = useState('');
+    const [patients, setPatients]               = useState([]);
+    const [loading, setLoading]                 = useState(true);
+    const [analyzing, setAnalyzing]             = useState(false);
+    const [scoringId, setScoringId]             = useState(null);
+    const [showModal, setShowModal]             = useState(false);
+    const [riskFilter, setRiskFilter]           = useState(initialRiskFilter);
+    const [searchQuery, setSearchQuery]         = useState('');
     const [selectedPatient, setSelectedPatient] = useState(null);
     const [editingPatient, setEditingPatient]   = useState(null);
 
@@ -36,7 +36,6 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
         }
     };
 
-    // Run AI prediction for ALL patients
     const runPrediction = async () => {
         if (patients.length === 0) {
             showToast({ type: 'warning', message: 'No patients to analyse.' });
@@ -55,7 +54,6 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
         }
     };
 
-    // Run AI prediction for a single patient
     const scoreOne = async (patientId) => {
         try {
             setScoringId(patientId);
@@ -83,29 +81,35 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
     const formatDate = (dateStr) => {
         if (!dateStr) return 'Not Set';
         const d = new Date(dateStr);
-        return String(d.getDate()).padStart(2,'0') + '-' +
-               String(d.getMonth()+1).padStart(2,'0') + '-' +
+        return String(d.getDate()).padStart(2, '0') + '-' +
+               String(d.getMonth() + 1).padStart(2, '0') + '-' +
                d.getFullYear();
     };
 
     const getPickupStatus = (dateStr) => {
         if (!dateStr) return null;
-        const today = new Date(); today.setHours(0,0,0,0);
-        const pickup = new Date(dateStr); pickup.setHours(0,0,0,0);
-        const diff = Math.ceil((pickup - today) / (1000*60*60*24));
+        const today  = new Date(); today.setHours(0, 0, 0, 0);
+        const pickup = new Date(dateStr); pickup.setHours(0, 0, 0, 0);
+        const diff   = Math.ceil((pickup - today) / (1000 * 60 * 60 * 24));
         if (diff < 0)  return 'overdue';
         if (diff <= 3) return 'soon';
         return 'normal';
     };
 
+    // ─── SEARCH: all meaningful text fields in the schema ───────────
     const filteredPatients = patients.filter(p => {
         const matchesRisk = riskFilter === 'All' ||
             (p.risk_level || '').toLowerCase() === riskFilter.toLowerCase();
-        const s = searchQuery.toLowerCase();
+
+        const s = searchQuery.toLowerCase().trim();
+        if (!s) return matchesRisk; // no search query → only apply risk filter
+
         const matchesSearch =
-            (p.patient_id?.toLowerCase() || '').includes(s) ||
-            (p.residence_district?.toLowerCase() || '').includes(s) ||
-            (p.facility_name?.toLowerCase() || '').includes(s);
+            (p.patient_id  || '').toLowerCase().includes(s) ||
+            (p.first_name  || '').toLowerCase().includes(s) ||
+            (p.last_name   || '').toLowerCase().includes(s) ||
+            (`${p.first_name || ''} ${p.last_name || ''}`).toLowerCase().includes(s);
+
         return matchesRisk && matchesSearch;
     });
 
@@ -125,13 +129,17 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
                         <input
                             type="text"
                             className="search-input"
-                            placeholder="Search ID, district, facility..."
+                            placeholder="Search by ID, first name or surname..."
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                         />
                     </div>
 
-                    <select className="filter-dropdown" value={riskFilter} onChange={e => setRiskFilter(e.target.value)}>
+                    <select
+                        className="filter-dropdown"
+                        value={riskFilter}
+                        onChange={e => setRiskFilter(e.target.value)}
+                    >
                         <option value="All">All Patients</option>
                         <option value="High">High Risk Only</option>
                         <option value="Medium">Medium Risk Only</option>
@@ -163,7 +171,10 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
                     ) : filteredPatients.length === 0 ? (
                         <div className="empty-state">
                             <h3>No patients found</h3>
-                            <button className="btn-show-all" onClick={() => { setRiskFilter('All'); setSearchQuery(''); }}>
+                            <button
+                                className="btn-show-all"
+                                onClick={() => { setRiskFilter('All'); setSearchQuery(''); }}
+                            >
                                 Clear Filters
                             </button>
                         </div>
@@ -197,7 +208,7 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
                                                 {p.next_pickup_date ? (
                                                     <span className={`pickup-badge pickup-${pickupStatus}`}>
                                                         {pickupStatus === 'overdue' && '⚠️ '}
-                                                        {pickupStatus === 'soon' && '🔔 '}
+                                                        {pickupStatus === 'soon'    && '🔔 '}
                                                         {formatDate(p.next_pickup_date)}
                                                     </span>
                                                 ) : (
@@ -208,12 +219,19 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
                                                 {p.risk_level ? (
                                                     <div className="risk-meter-wrapper">
                                                         <div className="risk-track">
-                                                            <div className={`risk-fill ${riskClass}`} style={{ width: `${riskScore}%` }} />
+                                                            <div
+                                                                className={`risk-fill ${riskClass}`}
+                                                                style={{ width: `${riskScore}%` }}
+                                                            />
                                                         </div>
-                                                        <span className={`risk-score-text ${riskClass}`}>{riskScore}%</span>
+                                                        <span className={`risk-score-text ${riskClass}`}>
+                                                            {riskScore}%
+                                                        </span>
                                                     </div>
                                                 ) : (
-                                                    <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>Not scored</span>
+                                                    <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>
+                                                        Not scored
+                                                    </span>
                                                 )}
                                             </td>
                                             <td>
@@ -223,10 +241,18 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
                                             </td>
                                             <td>
                                                 <div className="action-buttons">
-                                                    <button className="btn-icon view" title="View Details" onClick={() => setSelectedPatient(p)}>
+                                                    <button
+                                                        className="btn-icon view"
+                                                        title="View Details"
+                                                        onClick={() => setSelectedPatient(p)}
+                                                    >
                                                         <Eye size={15} />
                                                     </button>
-                                                    <button className="btn-icon edit" title="Edit Patient" onClick={() => setEditingPatient(p)}>
+                                                    <button
+                                                        className="btn-icon edit"
+                                                        title="Edit Patient"
+                                                        onClick={() => setEditingPatient(p)}
+                                                    >
                                                         <Pencil size={15} />
                                                     </button>
                                                     <button

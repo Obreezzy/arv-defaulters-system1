@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
-import { authAPI } from '../services/api';
+import React, { useState, useEffect } from 'react';
+import { authAPI, facilitiesAPI } from '../services/api';
 import { useNotifications } from '../contexts/NotificationContext';
 
 function StaffForm({ onClose, onSuccess }) {
   const { showToast } = useNotifications();
-  const [loading, setLoading] = useState(false);
-  const [formError, setFormError] = useState('');
+  const [loading, setLoading]       = useState(false);
+  const [formError, setFormError]   = useState('');
+  const [facilities, setFacilities] = useState([]);
+
   const [formData, setFormData] = useState({
     full_name:     '',
     username:      '',
@@ -13,46 +15,59 @@ function StaffForm({ onClose, onSuccess }) {
     phone_number:  '',
     role:          'healthcare_worker',
     password:      '',
-    clinic_name:   '',
-    clinic_number: ''
+    facility_id:   '',   // ← NEW: links to facilities table
+    clinic_name:   '',   // auto-filled from selected facility
+    clinic_number: ''    // auto-filled from selected facility
   });
 
-  const isNurseRole = formData.role === 'healthcare_worker';
-  const isAdminRole = formData.role === 'admin';
-  const needsClinic = !isAdminRole;
+  const isNurseRole  = formData.role === 'healthcare_worker';
+  const isAdminRole  = formData.role === 'admin';
+  const needsClinic  = !isAdminRole;
+
+  // Load facilities list on mount
+  useEffect(() => {
+    const loadFacilities = async () => {
+      try {
+        const res = await facilitiesAPI.getAll();
+        setFacilities(res.facilities || res.data || []);
+      } catch (e) {
+        console.error('Failed to load facilities:', e);
+      }
+    };
+    loadFacilities();
+  }, []);
 
   const handleChange = (e) => {
     setFormError('');
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+
+    // When a facility is selected, auto-fill clinic_name and clinic_number
+    if (name === 'facility_id') {
+      const selected = facilities.find(f => f.facility_id === value);
+      setFormData(prev => ({
+        ...prev,
+        facility_id:   value,
+        clinic_name:   selected ? selected.facility_name  : '',
+        clinic_number: selected ? selected.facility_id    : ''
+      }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError('');
 
-    // ── Frontend validation ──
-    if (!formData.full_name.trim()) {
-      setFormError('Full name is required.');
-      return;
-    }
-    if (!formData.username.trim()) {
-      setFormError('Username is required.');
-      return;
-    }
-    if (!formData.email.trim()) {
-      setFormError('Email address is required.');
-      return;
-    }
+    if (!formData.full_name.trim())  { setFormError('Full name is required.');         return; }
+    if (!formData.username.trim())   { setFormError('Username is required.');           return; }
+    if (!formData.email.trim())      { setFormError('Email address is required.');      return; }
     if (!formData.password || formData.password.length < 6) {
       setFormError('Password must be at least 6 characters.');
       return;
     }
-    if (needsClinic && !formData.clinic_number.trim()) {
-      setFormError('Clinic Number is required for this role.');
-      return;
-    }
-    if (needsClinic && !formData.clinic_name.trim()) {
-      setFormError('Clinic Name is required for this role.');
+    if (needsClinic && !formData.facility_id) {
+      setFormError('Please select a facility for this staff member.');
       return;
     }
 
@@ -63,8 +78,6 @@ function StaffForm({ onClose, onSuccess }) {
       onSuccess();
       onClose();
     } catch (err) {
-      console.error(err);
-      // ── Show the exact message returned by the backend ──
       const message = err.response?.data?.message || 'Failed to create account. Please try again.';
       setFormError(message);
       showToast({ type: 'error', message });
@@ -72,6 +85,9 @@ function StaffForm({ onClose, onSuccess }) {
       setLoading(false);
     }
   };
+
+  // Get selected facility details for display
+  const selectedFacility = facilities.find(f => f.facility_id === formData.facility_id);
 
   return (
     <div className="modal-overlay">
@@ -83,19 +99,13 @@ function StaffForm({ onClose, onSuccess }) {
 
         <form onSubmit={handleSubmit} className="modal-body">
 
-          {/* ── Error banner ── */}
+          {/* Error banner */}
           {formError && (
             <div style={{
-              backgroundColor: '#fef2f2',
-              border: '1px solid #fecaca',
-              borderRadius: '8px',
-              padding: '0.75rem 1rem',
-              marginBottom: '1rem',
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '0.5rem',
-              fontSize: '0.85rem',
-              color: '#991b1b'
+              backgroundColor: '#fef2f2', border: '1px solid #fecaca',
+              borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1rem',
+              display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
+              fontSize: '0.85rem', color: '#991b1b'
             }}>
               <span style={{ fontSize: '1rem', flexShrink: 0 }}>⚠️</span>
               <span>{formError}</span>
@@ -103,7 +113,6 @@ function StaffForm({ onClose, onSuccess }) {
           )}
 
           <div className="form-grid">
-
             <div className="form-group">
               <label>Full Name <span style={{ color: '#ef4444' }}>*</span></label>
               <input type="text" name="full_name" required
@@ -156,10 +165,9 @@ function StaffForm({ onClose, onSuccess }) {
                 Staff member should change this after first login
               </small>
             </div>
-
           </div>
 
-          {/* ── Clinic Assignment (not for admins) ── */}
+          {/* Facility Assignment — not for admins */}
           {needsClinic && (
             <div style={{ marginTop: '1.25rem' }}>
               <div style={{
@@ -167,46 +175,57 @@ function StaffForm({ onClose, onSuccess }) {
                 textTransform: 'uppercase', letterSpacing: '0.05em',
                 marginBottom: '0.75rem'
               }}>
-                🏥 Clinic Assignment
+                 Facility Assignment
               </div>
-              <div className="form-grid">
-                <div className="form-group">
-                  <label>Clinic Number <span style={{ color: '#ef4444' }}>*</span></label>
-                  <input
-                    type="text"
-                    name="clinic_number"
-                    value={formData.clinic_number}
-                    onChange={handleChange}
-                    placeholder="e.g. CLN-001"
-                    required={needsClinic}
-                  />
-                  <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>
-                    Auto-fills when they record pickups or register patients
-                  </small>
-                </div>
-                <div className="form-group">
-                  <label>Clinic Name <span style={{ color: '#ef4444' }}>*</span></label>
-                  <input
-                    type="text"
-                    name="clinic_name"
-                    value={formData.clinic_name}
-                    onChange={handleChange}
-                    placeholder="e.g. Sakubva Clinic, Mutare"
-                    required={needsClinic}
-                  />
-                  <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>
-                    Full name of the clinic they are assigned to
-                  </small>
-                </div>
+
+              <div className="form-group">
+                <label>Assign to Facility <span style={{ color: '#ef4444' }}>*</span></label>
+                <select
+                  name="facility_id"
+                  value={formData.facility_id}
+                  onChange={handleChange}
+                  required={needsClinic}
+                  style={{
+                    width: '100%', padding: '0.6rem', border: '1px solid #d1d5db',
+                    borderRadius: '6px', outline: 'none', fontSize: '0.875rem',
+                    backgroundColor: 'white'
+                  }}
+                >
+                  <option value="">Select a facility...</option>
+                  {facilities.map(f => (
+                    <option key={f.facility_id} value={f.facility_id}>
+                      {f.facility_name} — {f.district}, {f.province} ({f.catchment_type})
+                    </option>
+                  ))}
+                </select>
+                <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>
+                  Their clinic details will auto-fill from this selection
+                </small>
               </div>
+
+              {/* Show selected facility details */}
+              {selectedFacility && (
+                <div style={{
+                  marginTop: '0.75rem', padding: '0.75rem 1rem',
+                  background: '#f0fdf4', border: '1px solid #bbf7d0',
+                  borderRadius: '8px', fontSize: '0.85rem', color: '#166534'
+                }}>
+                  <div style={{ fontWeight: '700', marginBottom: '0.25rem' }}>
+                     {selectedFacility.facility_name}
+                  </div>
+                  <div style={{ color: '#4b5563', fontSize: '0.8rem' }}>
+                    {selectedFacility.facility_type} · {selectedFacility.district}, {selectedFacility.province}
+                    · <strong>{selectedFacility.catchment_type}</strong>
+                    · ID: <code>{selectedFacility.facility_id}</code>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {/* ── Auto-generation notice ── */}
+          {/* Auto-generation notice */}
           <div style={{
-            marginTop: '1rem',
-            padding: '0.75rem 1rem',
-            borderRadius: '8px',
+            marginTop: '1rem', padding: '0.75rem 1rem', borderRadius: '8px',
             backgroundColor: isNurseRole ? '#f0fdf4' : '#f8fafc',
             border: '1px solid ' + (isNurseRole ? '#bbf7d0' : '#e2e8f0'),
             fontSize: '0.82rem',
@@ -215,24 +234,22 @@ function StaffForm({ onClose, onSuccess }) {
           }}>
             {isNurseRole && (
               <>
-                ✅ A <strong>Staff ID</strong> (STF-XXX) and <strong>Nurse Number</strong> (NRS-XXX)
+                 A <strong>Staff ID</strong> (STF-XXX) and <strong>Nurse Number</strong> (NRS-XXX)
                 will be auto-generated.<br />
-                When they log in, their <strong>Clinic Number</strong>, <strong>Clinic Name</strong>,
-                and <strong>Nurse Number</strong> will auto-fill and lock when recording pickups or
-                registering patients.
+                When they log in, their <strong>Facility</strong> and <strong>Nurse Number</strong> will
+                auto-fill and lock when recording pickups or registering patients.
               </>
             )}
             {formData.role === 'data_entry' && (
               <>
-                ✅ A <strong>Staff ID</strong> (STF-XXX) will be auto-generated.<br />
-                Their <strong>Clinic Number</strong> and <strong>Clinic Name</strong> will auto-fill
-                when using the system. No nurse number is assigned to data entry staff.
+                 A <strong>Staff ID</strong> (STF-XXX) will be auto-generated.<br />
+                Their <strong>Facility</strong> will auto-fill when using the system.
               </>
             )}
             {isAdminRole && (
               <>
-                ✅ A <strong>Staff ID</strong> (STF-XXX) will be auto-generated for this
-                administrator. Administrators are not assigned to a specific clinic.
+                 A <strong>Staff ID</strong> (STF-XXX) will be auto-generated.
+                Administrators are not assigned to a specific facility.
               </>
             )}
           </div>

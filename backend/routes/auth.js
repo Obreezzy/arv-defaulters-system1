@@ -13,7 +13,6 @@ const router = express.Router();
 // ============================================
 
 const generateStaffId = async () => {
-  // Pull all numeric staff IDs, cast to int, get the max
   const result = await query(`
     SELECT COALESCE(MAX(
       CAST(REGEXP_REPLACE(staff_id, '[^0-9]', '', 'g') AS INTEGER)
@@ -45,10 +44,13 @@ router.post('/register', async (req, res) => {
   try {
     const {
       username, email, password, full_name, role,
-      phone_number, clinic_name, clinic_number
+      phone_number,
+      facility_id,    // ← NEW: from facilities table
+      clinic_name,    // auto-filled on frontend from facility selection
+      clinic_number   // auto-filled on frontend from facility selection
     } = req.body;
 
-    console.log('Registration attempt:', { username, email, role });
+    console.log('Registration attempt:', { username, email, role, facility_id });
 
     // ── Required fields ──
     if (!username || !email || !password || !full_name || !role) {
@@ -72,22 +74,30 @@ router.post('/register', async (req, res) => {
     if (!validRoles.includes(role)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid role selected. Must be Healthcare Worker, Data Entry, or Administrator.'
+        message: 'Invalid role selected.'
       });
     }
 
-    // ── Clinic fields required for non-admins ──
-    if (role !== 'admin' && !clinic_number) {
+    // ── Facility required for non-admins ──
+    if (role !== 'admin' && !facility_id) {
       return res.status(400).json({
         success: false,
-        message: 'Clinic Number is required for nurses and data entry staff.'
+        message: 'A facility must be assigned for nurses and data entry staff.'
       });
     }
-    if (role !== 'admin' && !clinic_name) {
-      return res.status(400).json({
-        success: false,
-        message: 'Clinic Name is required for nurses and data entry staff.'
-      });
+
+    // ── Validate facility exists ──
+    if (facility_id) {
+      const facCheck = await query(
+        'SELECT facility_id FROM facilities WHERE facility_id = $1',
+        [facility_id]
+      );
+      if (facCheck.rows.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Selected facility does not exist. Please choose a valid facility.'
+        });
+      }
     }
 
     // ── Duplicate username ──
@@ -110,7 +120,7 @@ router.post('/register', async (req, res) => {
     if (emailCheck.rows.length > 0) {
       return res.status(409).json({
         success: false,
-        message: 'An account with email "' + email + '" already exists. Please use a different email or contact the administrator.'
+        message: 'An account with email "' + email + '" already exists.'
       });
     }
 
@@ -126,13 +136,14 @@ router.post('/register', async (req, res) => {
     const salt          = await bcrypt.genSalt(10);
     const password_hash = await bcrypt.hash(password, salt);
 
-    // ── Generate IDs using REGEXP MAX — always correct even with mixed formats ──
+    // ── Generate IDs ──
     const staff_id     = await generateStaffId();
     const nurse_number = role === 'healthcare_worker' ? await generateNurseNumber() : null;
 
     console.log('Generated Staff ID:', staff_id, nurse_number ? '| Nurse No: ' + nurse_number : '');
 
     // ── Insert ──
+    // clinic_number stores facility_id so existing code that reads clinic_number still works
     const result = await query(
       `INSERT INTO users (
           username, email, password_hash, full_name, role, phone_number,
@@ -148,12 +159,12 @@ router.post('/register', async (req, res) => {
         staff_id,
         nurse_number,
         clinic_name   || null,
-        clinic_number || null
+        facility_id   || clinic_number || null  // store facility_id as clinic_number
       ]
     );
 
     const newUser = result.rows[0];
-    console.log('User created successfully:', newUser.user_id, '| Staff ID:', staff_id);
+    console.log('User created:', newUser.user_id, '| Staff ID:', staff_id, '| Facility:', facility_id);
 
     res.status(201).json({
       success: true,
@@ -169,46 +180,25 @@ router.post('/register', async (req, res) => {
         staff_id:      newUser.staff_id,
         nurse_number:  newUser.nurse_number,
         clinic_name:   newUser.clinic_name,
-        clinic_number: newUser.clinic_number,
+        clinic_number: newUser.clinic_number,  // this is the facility_id
         created_at:    newUser.created_at
       }
     });
 
   } catch (error) {
-    console.error(' Registration error:', error);
+    console.error('Registration error:', error);
 
-    // ── Catch any remaining DB unique constraint errors ──
     if (error.code === '23505') {
       const detail = error.detail || '';
-      if (detail.includes('staff_id')) {
-        return res.status(409).json({
-          success: false,
-          message: 'Staff ID conflict detected. Please try again — the system will generate a new ID.'
-        });
-      }
-      if (detail.includes('nurse_number')) {
-        return res.status(409).json({
-          success: false,
-          message: 'Nurse Number conflict detected. Please try again — the system will generate a new number.'
-        });
-      }
-      if (detail.includes('username')) {
-        return res.status(409).json({
-          success: false,
-          message: 'That username is already taken. Please choose another.'
-        });
-      }
-      if (detail.includes('email')) {
-        return res.status(409).json({
-          success: false,
-          message: 'That email address is already registered.'
-        });
-      }
+      if (detail.includes('staff_id'))    return res.status(409).json({ success: false, message: 'Staff ID conflict. Please try again.' });
+      if (detail.includes('nurse_number'))return res.status(409).json({ success: false, message: 'Nurse Number conflict. Please try again.' });
+      if (detail.includes('username'))    return res.status(409).json({ success: false, message: 'That username is already taken.' });
+      if (detail.includes('email'))       return res.status(409).json({ success: false, message: 'That email address is already registered.' });
     }
 
     res.status(500).json({
       success: false,
-      message: 'An unexpected error occurred while creating the account. Please try again.',
+      message: 'An unexpected error occurred. Please try again.',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
@@ -262,6 +252,7 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    // clinic_number holds the facility_id for non-admin users
     const payload = {
       user_id:       user.user_id,
       username:      user.username,
@@ -270,14 +261,14 @@ router.post('/login', async (req, res) => {
       staff_id:      user.staff_id,
       nurse_number:  user.nurse_number  || null,
       clinic_name:   user.clinic_name   || null,
-      clinic_number: user.clinic_number || null
+      clinic_number: user.clinic_number || null  // = facility_id
     };
 
     const token = jwt.sign(payload, process.env.JWT_SECRET, {
       expiresIn: process.env.JWT_EXPIRES_IN || '24h'
     });
 
-    console.log('JWT generated for:', email, '| Role:', user.role);
+    console.log('JWT generated for:', email, '| Role:', user.role, '| Facility:', user.clinic_number);
 
     res.json({
       success: true,
@@ -293,7 +284,7 @@ router.post('/login', async (req, res) => {
         staff_id:      user.staff_id,
         nurse_number:  user.nurse_number  || null,
         clinic_name:   user.clinic_name   || null,
-        clinic_number: user.clinic_number || null,
+        clinic_number: user.clinic_number || null,  // = facility_id
         created_at:    user.created_at
       }
     });
@@ -344,7 +335,7 @@ router.get('/me', verifyToken, async (req, res) => {
         staff_id:      user.staff_id,
         nurse_number:  user.nurse_number  || null,
         clinic_name:   user.clinic_name   || null,
-        clinic_number: user.clinic_number || null,
+        clinic_number: user.clinic_number || null,  // = facility_id
         created_at:    user.created_at
       }
     });

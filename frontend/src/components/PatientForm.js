@@ -1,22 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2, User, MapPin, Heart, Building2 } from 'lucide-react';
+import { X, Save, User, MapPin, Heart, Building2 } from 'lucide-react';
 import './PatientForm.css';
 import { patientsAPI, facilitiesAPI } from '../services/api';
 import { useNotifications } from '../contexts/NotificationContext';
 
 /**
- * PatientForm.js — Register a new patient using the arv_inference schema.
- * Uses PatientForm.css for all styling.
+ * PatientForm.js — Register a new patient.
+ * Facility is auto-filled from the logged-in nurse's profile.
+ * Admins can manually select a facility.
  */
 function PatientForm({ onClose, onSuccess, currentUser }) {
-    const { showToast } = useNotifications();
-    const [saving, setSaving] = useState(false);
+    const { showToast }   = useNotifications();
+    const [saving, setSaving]       = useState(false);
     const [facilities, setFacilities] = useState([]);
-    const [success, setSuccess] = useState(false);
+    const [facilityInfo, setFacilityInfo] = useState(null);
+    const [success, setSuccess]     = useState(false);
+
+    // Determine if current user is admin (admins can pick any facility)
+    const isAdmin = currentUser?.role === 'admin';
 
     const [form, setForm] = useState({
         patient_id:                    '',
-        facility_id:                   '',
+        // facility_id will be set in useEffect below
+        facility_id:                   currentUser?.clinic_number || '',
         sex:                           '',
         date_of_birth:                 '',
         art_start_date:                '',
@@ -38,19 +44,35 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
     });
 
     useEffect(() => {
-        const loadFacilities = async () => {
+        const init = async () => {
             try {
                 const res = await facilitiesAPI.getAll();
-                setFacilities(res.facilities || res.data || []);
+                const fList = res.facilities || res.data || [];
+                setFacilities(fList);
+
+                if (!isAdmin && currentUser?.clinic_number) {
+                    // Nurse: auto-fill facility from their profile
+                    const nurseFacility = fList.find(
+                        f => f.facility_id === currentUser.clinic_number
+                    );
+                    if (nurseFacility) {
+                        setFacilityInfo(nurseFacility);
+                        setForm(prev => ({ ...prev, facility_id: nurseFacility.facility_id }));
+                    }
+                }
             } catch (e) {
                 console.error('Failed to load facilities:', e);
             }
         };
-        loadFacilities();
-    }, []);
+        init();
+    }, [currentUser, isAdmin]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
+        if (name === 'facility_id' && isAdmin) {
+            const selected = facilities.find(f => f.facility_id === value);
+            setFacilityInfo(selected || null);
+        }
         setForm(prev => ({ ...prev, [name]: value }));
     };
 
@@ -61,7 +83,7 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
             return;
         }
         if (!form.facility_id) {
-            showToast({ type: 'error', message: 'Facility is required' });
+            showToast({ type: 'error', message: 'Facility is required. Please contact admin if your facility is not assigned.' });
             return;
         }
 
@@ -86,7 +108,7 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
         return (
             <div className="form-overlay">
                 <div className="form-modal success-modal">
-                    <div className="success-icon">✅</div>
+                    <div className="success-icon"></div>
                     <h2>Patient Registered!</h2>
                     <p>The new patient has been added to the system.</p>
                 </div>
@@ -112,18 +134,56 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                         <div className="form-row">
                             <div className="form-group">
                                 <label>Patient ID (auto-generated if blank)</label>
-                                <input name="patient_id" value={form.patient_id} onChange={handleChange} placeholder="e.g. PT000100" />
+                                <input
+                                    name="patient_id"
+                                    value={form.patient_id}
+                                    onChange={handleChange}
+                                    placeholder="e.g. PT000100"
+                                />
                             </div>
+
+                            {/* FACILITY — auto-fill for nurses, dropdown for admins */}
                             <div className="form-group">
                                 <label>Facility <span className="required">*</span></label>
-                                <select name="facility_id" value={form.facility_id} onChange={handleChange} required>
-                                    <option value="">Select facility...</option>
-                                    {facilities.map(f => (
-                                        <option key={f.facility_id} value={f.facility_id}>
-                                            {f.facility_name} ({f.catchment_type})
-                                        </option>
-                                    ))}
-                                </select>
+
+                                {isAdmin ? (
+                                    // Admin: can select any facility
+                                    <select
+                                        name="facility_id"
+                                        value={form.facility_id}
+                                        onChange={handleChange}
+                                        required
+                                    >
+                                        <option value="">Select facility...</option>
+                                        {facilities.map(f => (
+                                            <option key={f.facility_id} value={f.facility_id}>
+                                                {f.facility_name} ({f.catchment_type})
+                                            </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    // Nurse/Data Entry: facility is locked to their assignment
+                                    <div style={{
+                                        padding: '0.65rem 0.75rem',
+                                        background: '#f0fdf4',
+                                        border: '1px solid #bbf7d0',
+                                        borderRadius: '8px',
+                                        fontSize: '0.9rem',
+                                        color: '#166534',
+                                        fontWeight: '600'
+                                    }}>
+                                        🏥 {facilityInfo
+                                            ? `${facilityInfo.facility_name} (${facilityInfo.catchment_type})`
+                                            : currentUser?.clinic_name || 'Loading...'
+                                        }
+                                        <div style={{
+                                            fontSize: '0.75rem', color: '#4b5563',
+                                            fontWeight: '400', marginTop: '0.15rem'
+                                        }}>
+                                            Auto-assigned from your profile · {currentUser?.clinic_number}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -258,18 +318,19 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                         </div>
                         <div className="form-row">
                             <div className="form-group">
-                                <label>GPS Latitude</label>
+                                <label>GPS Latitude <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>(optional)</span></label>
                                 <input type="number" step="any" name="residence_gps_lat" value={form.residence_gps_lat} onChange={handleChange} placeholder="-18.97" />
                             </div>
                             <div className="form-group">
-                                <label>GPS Longitude</label>
+                                <label>GPS Longitude <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>(optional)</span></label>
                                 <input type="number" step="any" name="residence_gps_lon" value={form.residence_gps_lon} onChange={handleChange} placeholder="32.67" />
                             </div>
                         </div>
                         <div className="form-row">
                             <div className="form-group">
                                 <label>Travel Time to Clinic (minutes)</label>
-                                <input type="number" name="self_reported_travel_time_min" value={form.self_reported_travel_time_min} onChange={handleChange} placeholder="e.g. 45" />
+                                <input type="number" name="self_reported_travel_time_min" value={form.self_reported_travel_time_min} onChange={handleChange} placeholder="e.g. 45 — ask the patient" />
+                                <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>Ask the patient: "How long does it take you to travel here?"</small>
                             </div>
                         </div>
                     </div>
@@ -280,7 +341,10 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                             Cancel
                         </button>
                         <button type="submit" className="submit-button" disabled={saving}>
-                            {saving ? <><span className="spinner-small"></span>Registering...</> : <><Save size={15} /> Register Patient</>}
+                            {saving
+                                ? <><span className="spinner-small"></span>Registering...</>
+                                : <><Save size={15} /> Register Patient</>
+                            }
                         </button>
                     </div>
 

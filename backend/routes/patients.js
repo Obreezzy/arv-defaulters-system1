@@ -57,6 +57,9 @@ router.get('/', async (req, res) => {
                 p.residence_gps_lon,
                 p.self_reported_travel_time_min,
                 p.phone_available,
+                p.phone_number,
+                p.next_of_kin_name,
+                p.next_of_kin_phone,
                 p.marital_status,
                 p.education_level,
                 p.occupation,
@@ -159,6 +162,7 @@ router.post('/', async (req, res) => {
         residence_province, residence_district, residence_village,
         residence_ward, residence_gps_lat, residence_gps_lon,
         self_reported_travel_time_min, phone_available,
+        phone_number, next_of_kin_name, next_of_kin_phone,
         marital_status, education_level, occupation, disclosure_status,
     } = req.body;
 
@@ -180,11 +184,12 @@ router.post('/', async (req, res) => {
                 residence_province, residence_district, residence_village,
                 residence_ward, residence_gps_lat, residence_gps_lon,
                 self_reported_travel_time_min, phone_available,
+                phone_number, next_of_kin_name, next_of_kin_phone,
                 marital_status, education_level, occupation,
                 disclosure_status, exit_status
             ) VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-                $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'active'
+                $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,'active'
             ) RETURNING *
         `, [
             pid, facility_id, sex || null, date_of_birth || null, art_start_date,
@@ -192,6 +197,7 @@ router.post('/', async (req, res) => {
             residence_province || null, residence_district || null, residence_village || null,
             residence_ward || null, residence_gps_lat || null, residence_gps_lon || null,
             self_reported_travel_time_min || null, phone_available || null,
+            phone_number || null, next_of_kin_name || null, next_of_kin_phone || null,
             marital_status || null, education_level || null, occupation || null,
             disclosure_status || null,
         ]);
@@ -215,6 +221,7 @@ router.put('/:id', async (req, res) => {
         baseline_cd4, residence_province, residence_district, residence_village,
         residence_ward, residence_gps_lat, residence_gps_lon,
         self_reported_travel_time_min, phone_available,
+        phone_number, next_of_kin_name, next_of_kin_phone,
         marital_status, education_level, occupation, disclosure_status,
     } = req.body;
 
@@ -227,9 +234,10 @@ router.put('/:id', async (req, res) => {
                 residence_village=$8, residence_ward=$9,
                 residence_gps_lat=$10, residence_gps_lon=$11,
                 self_reported_travel_time_min=$12, phone_available=$13,
-                marital_status=$14, education_level=$15,
-                occupation=$16, disclosure_status=$17
-            WHERE patient_id=$18 RETURNING *
+                phone_number=$14, next_of_kin_name=$15, next_of_kin_phone=$16,
+                marital_status=$17, education_level=$18,
+                occupation=$19, disclosure_status=$20
+            WHERE patient_id=$21 RETURNING *
         `, [
             sex || null, date_of_birth || null, hiv_diagnosis_date || null,
             who_stage_at_enrolment || null, baseline_cd4 || null,
@@ -237,6 +245,7 @@ router.put('/:id', async (req, res) => {
             residence_village || null, residence_ward || null,
             residence_gps_lat || null, residence_gps_lon || null,
             self_reported_travel_time_min || null, phone_available || null,
+            phone_number || null, next_of_kin_name || null, next_of_kin_phone || null,
             marital_status || null, education_level || null,
             occupation || null, disclosure_status || null,
             req.params.id,

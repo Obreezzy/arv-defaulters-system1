@@ -1,27 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, User, MapPin, Heart, Building2 } from 'lucide-react';
+import { X, Save, User, MapPin, Heart, Building2, Phone } from 'lucide-react';
 import './PatientForm.css';
 import { patientsAPI, facilitiesAPI } from '../services/api';
 import { useNotifications } from '../contexts/NotificationContext';
 
-/**
- * PatientForm.js — Register a new patient.
- * Facility is auto-filled from the logged-in nurse's profile.
- * Admins can manually select a facility.
- */
 function PatientForm({ onClose, onSuccess, currentUser }) {
     const { showToast }   = useNotifications();
-    const [saving, setSaving]       = useState(false);
-    const [facilities, setFacilities] = useState([]);
+    const [saving, setSaving]           = useState(false);
+    const [facilities, setFacilities]   = useState([]);
     const [facilityInfo, setFacilityInfo] = useState(null);
-    const [success, setSuccess]     = useState(false);
+    const [success, setSuccess]         = useState(false);
 
-    // Determine if current user is admin (admins can pick any facility)
     const isAdmin = currentUser?.role === 'admin';
 
     const [form, setForm] = useState({
         patient_id:                    '',
-        // facility_id will be set in useEffect below
         facility_id:                   currentUser?.clinic_number || '',
         sex:                           '',
         date_of_birth:                 '',
@@ -33,10 +26,11 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
         residence_district:            '',
         residence_village:             '',
         residence_ward:                '',
-        residence_gps_lat:             '',
-        residence_gps_lon:             '',
         self_reported_travel_time_min: '',
         phone_available:               '',
+        phone_number:                  '',       // NEW
+        next_of_kin_name:              '',       // NEW
+        next_of_kin_phone:             '',       // NEW
         marital_status:                '',
         education_level:               '',
         occupation:                    '',
@@ -51,7 +45,6 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                 setFacilities(fList);
 
                 if (!isAdmin && currentUser?.clinic_number) {
-                    // Nurse: auto-fill facility from their profile
                     const nurseFacility = fList.find(
                         f => f.facility_id === currentUser.clinic_number
                     );
@@ -83,7 +76,7 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
             return;
         }
         if (!form.facility_id) {
-            showToast({ type: 'error', message: 'Facility is required. Please contact admin if your facility is not assigned.' });
+            showToast({ type: 'error', message: 'Facility is required.' });
             return;
         }
 
@@ -108,7 +101,7 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
         return (
             <div className="form-overlay">
                 <div className="form-modal success-modal">
-                    <div className="success-icon"></div>
+                    <div className="success-icon">✅</div>
                     <h2>Patient Registered!</h2>
                     <p>The new patient has been added to the system.</p>
                 </div>
@@ -128,7 +121,7 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
 
                 <form className="patient-form" onSubmit={handleSubmit}>
 
-                    {/* Patient Identification */}
+                    {/* ── Patient Identification ── */}
                     <div className="form-section">
                         <h3 className="section-title"><Building2 size={16} /> Patient Identification</h3>
                         <div className="form-row">
@@ -141,19 +134,10 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                                     placeholder="e.g. PT000100"
                                 />
                             </div>
-
-                            {/* FACILITY — auto-fill for nurses, dropdown for admins */}
                             <div className="form-group">
                                 <label>Facility <span className="required">*</span></label>
-
                                 {isAdmin ? (
-                                    // Admin: can select any facility
-                                    <select
-                                        name="facility_id"
-                                        value={form.facility_id}
-                                        onChange={handleChange}
-                                        required
-                                    >
+                                    <select name="facility_id" value={form.facility_id} onChange={handleChange} required>
                                         <option value="">Select facility...</option>
                                         {facilities.map(f => (
                                             <option key={f.facility_id} value={f.facility_id}>
@@ -162,33 +146,16 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                                         ))}
                                     </select>
                                 ) : (
-                                    // Nurse/Data Entry: facility is locked to their assignment
-                                    <div style={{
-                                        padding: '0.65rem 0.75rem',
-                                        background: '#f0fdf4',
-                                        border: '1px solid #bbf7d0',
-                                        borderRadius: '8px',
-                                        fontSize: '0.9rem',
-                                        color: '#166534',
-                                        fontWeight: '600'
-                                    }}>
-                                        🏥 {facilityInfo
-                                            ? `${facilityInfo.facility_name} (${facilityInfo.catchment_type})`
-                                            : currentUser?.clinic_name || 'Loading...'
-                                        }
-                                        <div style={{
-                                            fontSize: '0.75rem', color: '#4b5563',
-                                            fontWeight: '400', marginTop: '0.15rem'
-                                        }}>
-                                            Auto-assigned from your profile · {currentUser?.clinic_number}
-                                        </div>
+                                    <div className="facility-autofill">
+                                        <span>🏥 {facilityInfo?.facility_name || 'Loading...'}</span>
+                                        <small>Auto-assigned from your profile · {form.facility_id}</small>
                                     </div>
                                 )}
                             </div>
                         </div>
                     </div>
 
-                    {/* Demographics */}
+                    {/* ── Demographics ── */}
                     <div className="form-section">
                         <h3 className="section-title"><User size={16} /> Demographics</h3>
                         <div className="form-row">
@@ -252,7 +219,44 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                         </div>
                     </div>
 
-                    {/* Clinical Information */}
+                    {/* ── Contact Information ── */}
+                    <div className="form-section">
+                        <h3 className="section-title"><Phone size={16} /> Contact Information</h3>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Patient Phone Number</label>
+                                <input
+                                    name="phone_number"
+                                    value={form.phone_number}
+                                    onChange={handleChange}
+                                    placeholder="e.g. +263 77 123 4567"
+                                />
+                                <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>Used for sending SMS reminders</small>
+                            </div>
+                        </div>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Next of Kin Name</label>
+                                <input
+                                    name="next_of_kin_name"
+                                    value={form.next_of_kin_name}
+                                    onChange={handleChange}
+                                    placeholder="Full name of next of kin"
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Next of Kin Phone</label>
+                                <input
+                                    name="next_of_kin_phone"
+                                    value={form.next_of_kin_phone}
+                                    onChange={handleChange}
+                                    placeholder="e.g. +263 77 765 4321"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ── Clinical Information ── */}
                     <div className="form-section">
                         <h3 className="section-title"><Heart size={16} /> Clinical Information</h3>
                         <div className="form-row">
@@ -293,7 +297,7 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                         </div>
                     </div>
 
-                    {/* Residence & Access */}
+                    {/* ── Residence & Access ── */}
                     <div className="form-section">
                         <h3 className="section-title"><MapPin size={16} /> Residence & Access</h3>
                         <div className="form-row">
@@ -318,24 +322,20 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                         </div>
                         <div className="form-row">
                             <div className="form-group">
-                                <label>GPS Latitude <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>(optional)</span></label>
-                                <input type="number" step="any" name="residence_gps_lat" value={form.residence_gps_lat} onChange={handleChange} placeholder="-18.97" />
-                            </div>
-                            <div className="form-group">
-                                <label>GPS Longitude <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>(optional)</span></label>
-                                <input type="number" step="any" name="residence_gps_lon" value={form.residence_gps_lon} onChange={handleChange} placeholder="32.67" />
-                            </div>
-                        </div>
-                        <div className="form-row">
-                            <div className="form-group">
                                 <label>Travel Time to Clinic (minutes)</label>
-                                <input type="number" name="self_reported_travel_time_min" value={form.self_reported_travel_time_min} onChange={handleChange} placeholder="e.g. 45 — ask the patient" />
+                                <input
+                                    type="number"
+                                    name="self_reported_travel_time_min"
+                                    value={form.self_reported_travel_time_min}
+                                    onChange={handleChange}
+                                    placeholder="e.g. 45 — ask the patient"
+                                />
                                 <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>Ask the patient: "How long does it take you to travel here?"</small>
                             </div>
                         </div>
                     </div>
 
-                    {/* Actions */}
+                    {/* ── Actions ── */}
                     <div className="form-actions">
                         <button type="button" className="cancel-button" onClick={onClose} disabled={saving}>
                             Cancel

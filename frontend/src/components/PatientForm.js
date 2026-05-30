@@ -1,15 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, MapPin, Heart, Phone, X, UserPlus } from 'lucide-react';
 import './PatientForm.css';
-import { patientsAPI } from '../services/api';
+import { patientsAPI, facilitiesAPI } from '../services/api';
 import { useNotifications } from '../contexts/NotificationContext';
 
 function PatientForm({ onClose, onSuccess, currentUser }) {
     const { showToast, addNotification } = useNotifications();
 
-    const [loading, setLoading] = useState(false);
-    const [success, setSuccess] = useState(false);
-    const [error, setError]     = useState(null);
+    const [loading, setLoading]       = useState(false);
+    const [success, setSuccess]       = useState(false);
+    const [error, setError]           = useState(null);
+    const [facilities, setFacilities] = useState([]);
 
     const [formData, setFormData] = useState({
         patient_id:                    '',
@@ -26,8 +27,6 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
         residence_district:            '',
         residence_village:             '',
         residence_ward:                '',
-        residence_gps_lat:             '',
-        residence_gps_lon:             '',
         self_reported_travel_time_min: '',
         phone_available:               '',
         phone_number:                  '',
@@ -38,6 +37,19 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
         occupation:                    '',
         disclosure_status:             '',
     });
+
+    // Load facilities for dropdown — GPS is fetched silently by backend on submit
+    useEffect(() => {
+        const load = async () => {
+            try {
+                const res = await facilitiesAPI.getAll();
+                setFacilities(res.facilities || res.data || []);
+            } catch (e) {
+                console.error('Could not load facilities:', e);
+            }
+        };
+        load();
+    }, []);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -53,7 +65,7 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
             return;
         }
         if (!formData.facility_id) {
-            setError('Facility ID is required.');
+            setError('Facility is required.');
             return;
         }
 
@@ -63,6 +75,7 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
             Object.entries(formData).forEach(([k, v]) => {
                 payload[k] = v === '' ? null : v;
             });
+            // GPS lat/lon NOT sent from frontend — backend auto-fills from facility record
 
             await patientsAPI.createPatient(payload);
 
@@ -119,42 +132,28 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                         <div className="form-row">
                             <div className="form-group">
                                 <label>First Name</label>
-                                <input
-                                    name="first_name"
-                                    value={formData.first_name}
-                                    onChange={handleChange}
-                                    placeholder="e.g. Obriel"
-                                />
+                                <input name="first_name" value={formData.first_name} onChange={handleChange} placeholder="e.g. Obriel" />
                             </div>
                             <div className="form-group">
                                 <label>Last Name</label>
-                                <input
-                                    name="last_name"
-                                    value={formData.last_name}
-                                    onChange={handleChange}
-                                    placeholder="e.g. Moyo"
-                                />
+                                <input name="last_name" value={formData.last_name} onChange={handleChange} placeholder="e.g. Moyo" />
                             </div>
                         </div>
                         <div className="form-row">
                             <div className="form-group">
                                 <label>Patient ID <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>(leave blank to auto-generate)</span></label>
-                                <input
-                                    name="patient_id"
-                                    value={formData.patient_id}
-                                    onChange={handleChange}
-                                    placeholder="e.g. PT-2024-001"
-                                />
+                                <input name="patient_id" value={formData.patient_id} onChange={handleChange} placeholder="e.g. PT000100" />
                             </div>
                             <div className="form-group">
-                                <label>Facility ID <span style={{ color: '#ef4444' }}>*</span></label>
-                                <input
-                                    name="facility_id"
-                                    value={formData.facility_id}
-                                    onChange={handleChange}
-                                    placeholder="e.g. FAC-001"
-                                    required
-                                />
+                                <label>Facility <span style={{ color: '#ef4444' }}>*</span></label>
+                                <select name="facility_id" value={formData.facility_id} onChange={handleChange} required>
+                                    <option value="">Select facility...</option>
+                                    {facilities.map(f => (
+                                        <option key={f.facility_id} value={f.facility_id}>
+                                            {f.facility_name}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
                         </div>
                     </div>
@@ -173,7 +172,7 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                             </div>
                             <div className="form-group">
                                 <label>Date of Birth</label>
-                                <input type="date" name="date_of_birth" value={formData.date_of_birth} onChange={handleChange} min="1946-01-01" max="2018-12-31" />
+                                <input type="date" name="date_of_birth" value={formData.date_of_birth} onChange={handleChange} />
                             </div>
                         </div>
                         <div className="form-row">
@@ -289,16 +288,6 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                         </div>
                         <div className="form-row">
                             <div className="form-group">
-                                <label>GPS Latitude</label>
-                                <input type="number" step="any" name="residence_gps_lat" value={formData.residence_gps_lat} onChange={handleChange} placeholder="-18.97" />
-                            </div>
-                            <div className="form-group">
-                                <label>GPS Longitude</label>
-                                <input type="number" step="any" name="residence_gps_lon" value={formData.residence_gps_lon} onChange={handleChange} placeholder="32.67" />
-                            </div>
-                        </div>
-                        <div className="form-row">
-                            <div className="form-group">
                                 <label>Travel Time to Clinic (minutes)</label>
                                 <input type="number" name="self_reported_travel_time_min" value={formData.self_reported_travel_time_min} onChange={handleChange} placeholder="e.g. 45" min="0" />
                             </div>
@@ -328,14 +317,11 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
 
                     {/* ── ACTIONS ── */}
                     <div className="form-actions">
-                        <button type="button" className="cancel-button" onClick={onClose} disabled={loading}>
-                            Cancel
-                        </button>
+                        <button type="button" className="cancel-button" onClick={onClose} disabled={loading}>Cancel</button>
                         <button type="submit" className="submit-button" disabled={loading}>
                             {loading
                                 ? <><span className="spinner-small"></span>Registering...</>
-                                : <><UserPlus size={15} /> Register Patient</>
-                            }
+                                : <><UserPlus size={15} /> Register Patient</>}
                         </button>
                     </div>
 

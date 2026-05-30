@@ -183,7 +183,7 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
                             <thead>
                                 <tr>
                                     <th>ID</th>
-                                    <th>Name</th>
+
                                     <th>Sex</th>
                                     <th>Age</th>
                                     <th>Distance</th>
@@ -202,10 +202,7 @@ function Patients({ initialRiskFilter = 'All', currentUser }) {
                                     return (
                                         <tr key={p.patient_id}>
                                             <td>{p.patient_id}</td>
-                                            <td>{p.first_name && p.last_name
-                                                ? `${p.first_name} ${p.last_name}`
-                                                : <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>—</span>}
-                                            </td>
+
                                             <td>{p.sex === 'F' ? 'Female' : p.sex === 'M' ? 'Male' : 'N/A'}</td>
                                             <td>{p.age || 'N/A'}</td>
                                             <td>{p.distance_km != null ? `${p.distance_km} km` : 'N/A'}</td>

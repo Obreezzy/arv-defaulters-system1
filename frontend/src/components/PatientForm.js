@@ -1,381 +1,283 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, User, MapPin, Heart, Building2, Phone } from 'lucide-react';
-import './PatientForm.css';
-import { patientsAPI, facilitiesAPI } from '../services/api';
+import { Search, Eye, Pencil, TrendingUp, UserPlus, Loader2, Brain } from 'lucide-react';
+import './Patients.css';
+import { patientsAPI } from '../services/api';
 import { useNotifications } from '../contexts/NotificationContext';
+import PatientForm from './PatientForm';
+import PatientDetailsModal from './PatientDetailsModal';
+import PatientEditForm from './PatientEditForm';
 
-function PatientForm({ onClose, onSuccess, currentUser }) {
-    const { showToast }   = useNotifications();
-    const [saving, setSaving]           = useState(false);
-    const [facilities, setFacilities]   = useState([]);
-    const [facilityInfo, setFacilityInfo] = useState(null);
-    const [success, setSuccess]         = useState(false);
+function Patients({ initialRiskFilter = 'All', currentUser }) {
+    const { showToast } = useNotifications();
 
-    const isAdmin = currentUser?.role === 'admin';
+    const [patients, setPatients]         = useState([]);
+    const [loading, setLoading]           = useState(true);
+    const [analyzing, setAnalyzing]       = useState(false);
+    const [scoringId, setScoringId]       = useState(null); // single patient scoring
+    const [showModal, setShowModal]       = useState(false);
+    const [riskFilter, setRiskFilter]     = useState(initialRiskFilter);
+    const [searchQuery, setSearchQuery]   = useState('');
+    const [selectedPatient, setSelectedPatient] = useState(null);
+    const [editingPatient, setEditingPatient]   = useState(null);
 
-    const [form, setForm] = useState({
-        patient_id:                    '',
-        first_name:                    '',
-        last_name:                     '',
-        facility_id:                   currentUser?.clinic_number || '',
-        sex:                           '',
-        date_of_birth:                 '',
-        art_start_date:                '',
-        hiv_diagnosis_date:            '',
-        who_stage_at_enrolment:        '',
-        baseline_cd4:                  '',
-        residence_province:            '',
-        residence_district:            '',
-        residence_village:             '',
-        residence_ward:                '',
-        self_reported_travel_time_min: '',
-        phone_available:               '',
-        phone_number:                  '',       // NEW
-        next_of_kin_name:              '',       // NEW
-        next_of_kin_phone:             '',       // NEW
-        marital_status:                '',
-        education_level:               '',
-        occupation:                    '',
-        disclosure_status:             '',
+    useEffect(() => { setRiskFilter(initialRiskFilter); }, [initialRiskFilter]);
+    useEffect(() => { loadPatients(); }, []);
+
+    const loadPatients = async () => {
+        try {
+            setLoading(true);
+            const res = await patientsAPI.getAllPatients();
+            setPatients(res.data || []);
+        } catch (err) {
+            console.error(err);
+            showToast({ type: 'error', message: 'Failed to load patients' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Run AI prediction for ALL patients
+    const runPrediction = async () => {
+        if (patients.length === 0) {
+            showToast({ type: 'warning', message: 'No patients to analyse.' });
+            return;
+        }
+        try {
+            setAnalyzing(true);
+            showToast({ type: 'info', message: '🤖 Running AI Risk Analysis...' });
+            await patientsAPI.predictRisk([]);
+            showToast({ type: 'success', message: '✅ Analysis complete! Scores updated.' });
+            await loadPatients();
+        } catch (err) {
+            showToast({ type: 'error', message: 'Analysis failed: ' + err.message });
+        } finally {
+            setAnalyzing(false);
+        }
+    };
+
+    // Run AI prediction for a single patient
+    const scoreOne = async (patientId) => {
+        try {
+            setScoringId(patientId);
+            const res = await patientsAPI.predictOne(patientId);
+            showToast({
+                type: 'success',
+                message: `Risk: ${res.risk?.label} (${Math.round((res.risk?.probability || 0) * 100)}%)`
+            });
+            await loadPatients();
+        } catch (err) {
+            showToast({ type: 'error', message: 'Scoring failed: ' + err.message });
+        } finally {
+            setScoringId(null);
+        }
+    };
+
+    const getRiskClass = (label) => {
+        switch (label?.toLowerCase()) {
+            case 'high':   return 'risk-high';
+            case 'medium': return 'risk-medium';
+            default:       return 'risk-low';
+        }
+    };
+
+    const formatDate = (dateStr) => {
+        if (!dateStr) return 'Not Set';
+        const d = new Date(dateStr);
+        return String(d.getDate()).padStart(2,'0') + '-' +
+               String(d.getMonth()+1).padStart(2,'0') + '-' +
+               d.getFullYear();
+    };
+
+    const getPickupStatus = (dateStr) => {
+        if (!dateStr) return null;
+        const today = new Date(); today.setHours(0,0,0,0);
+        const pickup = new Date(dateStr); pickup.setHours(0,0,0,0);
+        const diff = Math.ceil((pickup - today) / (1000*60*60*24));
+        if (diff < 0)  return 'overdue';
+        if (diff <= 3) return 'soon';
+        return 'normal';
+    };
+
+    const filteredPatients = patients.filter(p => {
+        const matchesRisk = riskFilter === 'All' ||
+            (p.risk_level || '').toLowerCase() === riskFilter.toLowerCase();
+        const s = searchQuery.toLowerCase();
+        const matchesSearch =
+            (p.patient_id?.toLowerCase() || '').includes(s) ||
+            (p.first_name?.toLowerCase() || '').includes(s) ||
+            (p.last_name?.toLowerCase() || '').includes(s) ||
+            (`${p.first_name || ''} ${p.last_name || ''}`.toLowerCase()).includes(s) ||
+            (p.residence_district?.toLowerCase() || '').includes(s) ||
+            (p.facility_name?.toLowerCase() || '').includes(s);
+        return matchesRisk && matchesSearch;
     });
 
-    useEffect(() => {
-        const init = async () => {
-            try {
-                const res = await facilitiesAPI.getAll();
-                const fList = res.facilities || res.data || [];
-                setFacilities(fList);
-
-                if (!isAdmin && currentUser?.clinic_number) {
-                    const nurseFacility = fList.find(
-                        f => f.facility_id === currentUser.clinic_number
-                    );
-                    if (nurseFacility) {
-                        setFacilityInfo(nurseFacility);
-                        setForm(prev => ({ ...prev, facility_id: nurseFacility.facility_id }));
-                    }
-                }
-            } catch (e) {
-                console.error('Failed to load facilities:', e);
-            }
-        };
-        init();
-    }, [currentUser, isAdmin]);
-
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        if (name === 'facility_id' && isAdmin) {
-            const selected = facilities.find(f => f.facility_id === value);
-            setFacilityInfo(selected || null);
-        }
-        setForm(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!form.art_start_date) {
-            showToast({ type: 'error', message: 'ART Start Date is required' });
-            return;
-        }
-        if (!form.facility_id) {
-            showToast({ type: 'error', message: 'Facility is required.' });
-            return;
-        }
-
-        setSaving(true);
-        try {
-            await patientsAPI.createPatient(form);
-            setSuccess(true);
-            showToast({ type: 'success', message: 'Patient registered successfully!' });
-            setTimeout(() => {
-                onSuccess?.();
-                onClose();
-            }, 1800);
-        } catch (err) {
-            const msg = err.response?.data?.message || err.message || 'Failed to register patient';
-            showToast({ type: 'error', message: msg });
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    if (success) {
-        return (
-            <div className="form-overlay">
-                <div className="form-modal success-modal">
-                    <div className="success-icon">✅</div>
-                    <h2>Patient Registered!</h2>
-                    <p>The new patient has been added to the system.</p>
-                </div>
-            </div>
-        );
-    }
-
     return (
-        <div className="form-overlay" onClick={onClose}>
-            <div className="form-modal" onClick={e => e.stopPropagation()}>
-
-                {/* Header */}
-                <div className="form-header">
-                    <h2>Register New Patient</h2>
-                    <button className="close-button" onClick={onClose}><X size={18} /></button>
+        <div className="patients-page">
+            <div className="page-header">
+                <div className="header-content">
+                    <h2 className="page-title">Patient Registry</h2>
+                    <p className="page-subtitle">
+                        Showing: {filteredPatients.length}{' '}
+                        {riskFilter !== 'All' ? riskFilter + ' Risk ' : ''}Patients
+                    </p>
                 </div>
-
-                <form className="patient-form" onSubmit={handleSubmit}>
-
-                    {/* ── Patient Identification ── */}
-                    <div className="form-section">
-                        <h3 className="section-title"><Building2 size={16} /> Patient Identification</h3>
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>First Name <span className="required">*</span></label>
-                                <input
-                                    name="first_name"
-                                    value={form.first_name}
-                                    onChange={handleChange}
-                                    placeholder="e.g. Tendai"
-                                    required
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label>Last Name <span className="required">*</span></label>
-                                <input
-                                    name="last_name"
-                                    value={form.last_name}
-                                    onChange={handleChange}
-                                    placeholder="e.g. Moyo"
-                                    required
-                                />
-                            </div>
-                        </div>
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>Patient ID (auto-generated if blank)</label>
-                                <input
-                                    name="patient_id"
-                                    value={form.patient_id}
-                                    onChange={handleChange}
-                                    placeholder="e.g. PT000100"
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label>Facility <span className="required">*</span></label>
-                                {isAdmin ? (
-                                    <select name="facility_id" value={form.facility_id} onChange={handleChange} required>
-                                        <option value="">Select facility...</option>
-                                        {facilities.map(f => (
-                                            <option key={f.facility_id} value={f.facility_id}>
-                                                {f.facility_name} ({f.catchment_type})
-                                            </option>
-                                        ))}
-                                    </select>
-                                ) : (
-                                    <div className="facility-autofill">
-                                        <span>🏥 {facilityInfo?.facility_name || 'Loading...'}</span>
-                                        <small>Auto-assigned from your profile · {form.facility_id}</small>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+                <div className="header-actions">
+                    <div className="search-container">
+                        <Search size={16} />
+                        <input
+                            type="text"
+                            className="search-input"
+                            placeholder="Search name, ID, district..."
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                        />
                     </div>
 
-                    {/* ── Demographics ── */}
-                    <div className="form-section">
-                        <h3 className="section-title"><User size={16} /> Demographics</h3>
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>Sex</label>
-                                <select name="sex" value={form.sex} onChange={handleChange}>
-                                    <option value="">Select...</option>
-                                    <option value="F">Female</option>
-                                    <option value="M">Male</option>
-                                </select>
-                            </div>
-                            <div className="form-group">
-                                <label>Date of Birth</label>
-                                <input type="date" name="date_of_birth" value={form.date_of_birth} onChange={handleChange} />
-                            </div>
-                        </div>
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>Marital Status</label>
-                                <select name="marital_status" value={form.marital_status} onChange={handleChange}>
-                                    <option value="">Select...</option>
-                                    <option value="single">Single</option>
-                                    <option value="married">Married</option>
-                                    <option value="widowed">Widowed</option>
-                                    <option value="divorced">Divorced</option>
-                                    <option value="cohabiting">Cohabiting</option>
-                                </select>
-                            </div>
-                            <div className="form-group">
-                                <label>Education Level</label>
-                                <select name="education_level" value={form.education_level} onChange={handleChange}>
-                                    <option value="">Select...</option>
-                                    <option value="none">None</option>
-                                    <option value="primary">Primary</option>
-                                    <option value="secondary">Secondary</option>
-                                    <option value="tertiary">Tertiary</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>Occupation</label>
-                                <select name="occupation" value={form.occupation} onChange={handleChange}>
-                                    <option value="">Select...</option>
-                                    <option value="farmer">Farmer</option>
-                                    <option value="informal_trader">Informal Trader</option>
-                                    <option value="formal_employed">Formal Employed</option>
-                                    <option value="unemployed">Unemployed</option>
-                                    <option value="student">Student</option>
-                                    <option value="domestic">Domestic</option>
-                                </select>
-                            </div>
-                            <div className="form-group">
-                                <label>Phone Available</label>
-                                <select name="phone_available" value={form.phone_available} onChange={handleChange}>
-                                    <option value="">Select...</option>
-                                    <option value="Yes">Yes</option>
-                                    <option value="No">No</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
+                    <select className="filter-dropdown" value={riskFilter} onChange={e => setRiskFilter(e.target.value)}>
+                        <option value="All">All Patients</option>
+                        <option value="High">High Risk Only</option>
+                        <option value="Medium">Medium Risk Only</option>
+                        <option value="Low">Low Risk Only</option>
+                    </select>
 
-                    {/* ── Contact Information ── */}
-                    <div className="form-section">
-                        <h3 className="section-title"><Phone size={16} /> Contact Information</h3>
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>Patient Phone Number</label>
-                                <input
-                                    name="phone_number"
-                                    value={form.phone_number}
-                                    onChange={handleChange}
-                                    placeholder="e.g. +263 77 123 4567"
-                                />
-                                <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>Used for sending SMS reminders</small>
-                            </div>
-                        </div>
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>Next of Kin Name</label>
-                                <input
-                                    name="next_of_kin_name"
-                                    value={form.next_of_kin_name}
-                                    onChange={handleChange}
-                                    placeholder="Full name of next of kin"
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label>Next of Kin Phone</label>
-                                <input
-                                    name="next_of_kin_phone"
-                                    value={form.next_of_kin_phone}
-                                    onChange={handleChange}
-                                    placeholder="e.g. +263 77 765 4321"
-                                />
-                            </div>
-                        </div>
-                    </div>
+                    <button
+                        className={'btn-predict' + (analyzing || patients.length === 0 ? ' disabled' : '')}
+                        onClick={runPrediction}
+                        disabled={analyzing || patients.length === 0}
+                    >
+                        <Brain size={15} />
+                        {analyzing ? 'Analyzing...' : 'Predict Risks'}
+                    </button>
 
-                    {/* ── Clinical Information ── */}
-                    <div className="form-section">
-                        <h3 className="section-title"><Heart size={16} /> Clinical Information</h3>
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>ART Start Date <span className="required">*</span></label>
-                                <input type="date" name="art_start_date" value={form.art_start_date} onChange={handleChange} required />
-                            </div>
-                            <div className="form-group">
-                                <label>HIV Diagnosis Date</label>
-                                <input type="date" name="hiv_diagnosis_date" value={form.hiv_diagnosis_date} onChange={handleChange} />
-                            </div>
-                        </div>
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>WHO Stage at Enrolment</label>
-                                <select name="who_stage_at_enrolment" value={form.who_stage_at_enrolment} onChange={handleChange}>
-                                    <option value="">Select...</option>
-                                    <option value="1">Stage 1</option>
-                                    <option value="2">Stage 2</option>
-                                    <option value="3">Stage 3</option>
-                                    <option value="4">Stage 4</option>
-                                </select>
-                            </div>
-                            <div className="form-group">
-                                <label>Baseline CD4</label>
-                                <input type="number" name="baseline_cd4" value={form.baseline_cd4} onChange={handleChange} placeholder="copies/mL" />
-                            </div>
-                        </div>
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>Disclosure Status</label>
-                                <select name="disclosure_status" value={form.disclosure_status} onChange={handleChange}>
-                                    <option value="">Select...</option>
-                                    <option value="disclosed">Disclosed</option>
-                                    <option value="not_disclosed">Not Disclosed</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* ── Residence & Access ── */}
-                    <div className="form-section">
-                        <h3 className="section-title"><MapPin size={16} /> Residence & Access</h3>
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>Province</label>
-                                <input name="residence_province" value={form.residence_province} onChange={handleChange} placeholder="e.g. Manicaland" />
-                            </div>
-                            <div className="form-group">
-                                <label>District</label>
-                                <input name="residence_district" value={form.residence_district} onChange={handleChange} placeholder="e.g. Mutare" />
-                            </div>
-                        </div>
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>Village</label>
-                                <input name="residence_village" value={form.residence_village} onChange={handleChange} />
-                            </div>
-                            <div className="form-group">
-                                <label>Ward</label>
-                                <input type="number" name="residence_ward" value={form.residence_ward} onChange={handleChange} placeholder="1-34" />
-                            </div>
-                        </div>
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>Travel Time to Clinic (minutes)</label>
-                                <input
-                                    type="number"
-                                    name="self_reported_travel_time_min"
-                                    value={form.self_reported_travel_time_min}
-                                    onChange={handleChange}
-                                    placeholder="e.g. 45 — ask the patient"
-                                />
-                                <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>Ask the patient: "How long does it take you to travel here?"</small>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* ── Actions ── */}
-                    <div className="form-actions">
-                        <button type="button" className="cancel-button" onClick={onClose} disabled={saving}>
-                            Cancel
-                        </button>
-                        <button type="submit" className="submit-button" disabled={saving}>
-                            {saving
-                                ? <><span className="spinner-small"></span>Registering...</>
-                                : <><Save size={15} /> Register Patient</>
-                            }
-                        </button>
-                    </div>
-
-                </form>
+                    <button className="btn-add-patient" onClick={() => setShowModal(true)}>
+                        <UserPlus size={16} /> New Patient
+                    </button>
+                </div>
             </div>
+
+            <div className="table-container">
+                <div className="table-scroll">
+                    {loading ? (
+                        <div className="empty-state">
+                            <Loader2 size={32} className="spin" />
+                            <p>Loading patients...</p>
+                        </div>
+                    ) : filteredPatients.length === 0 ? (
+                        <div className="empty-state">
+                            <h3>No patients found</h3>
+                            <button className="btn-show-all" onClick={() => { setRiskFilter('All'); setSearchQuery(''); }}>
+                                Clear Filters
+                            </button>
+                        </div>
+                    ) : (
+                        <table className="patients-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Sex</th>
+                                    <th>Age</th>
+                                    <th>Distance</th>
+                                    <th>Next Pickup</th>
+                                    <th>Predicted Risk</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredPatients.map(p => {
+                                    const pickupStatus = getPickupStatus(p.next_pickup_date);
+                                    const riskClass    = getRiskClass(p.risk_level);
+                                    const riskScore    = p.risk_score || 0;
+
+                                    return (
+                                        <tr key={p.patient_id}>
+                                            <td>{p.patient_id}</td>
+                                            <td>{p.sex === 'F' ? 'Female' : p.sex === 'M' ? 'Male' : 'N/A'}</td>
+                                            <td>{p.age || 'N/A'}</td>
+                                            <td>{p.distance_km != null ? `${p.distance_km} km` : 'N/A'}</td>
+                                            <td>
+                                                {p.next_pickup_date ? (
+                                                    <span className={`pickup-badge pickup-${pickupStatus}`}>
+                                                        {pickupStatus === 'overdue' && '⚠️ '}
+                                                        {pickupStatus === 'soon' && '🔔 '}
+                                                        {formatDate(p.next_pickup_date)}
+                                                    </span>
+                                                ) : (
+                                                    <span className="pickup-badge pickup-none">Not Set</span>
+                                                )}
+                                            </td>
+                                            <td>
+                                                {p.risk_level ? (
+                                                    <div className="risk-meter-wrapper">
+                                                        <div className="risk-track">
+                                                            <div className={`risk-fill ${riskClass}`} style={{ width: `${riskScore}%` }} />
+                                                        </div>
+                                                        <span className={`risk-score-text ${riskClass}`}>{riskScore}%</span>
+                                                    </div>
+                                                ) : (
+                                                    <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>Not scored</span>
+                                                )}
+                                            </td>
+                                            <td>
+                                                <span className={`status-badge ${p.is_active ? 'active' : 'inactive'}`}>
+                                                    {p.is_active ? 'Active' : 'Inactive'}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div className="action-buttons">
+                                                    <button className="btn-icon view" title="View Details" onClick={() => setSelectedPatient(p)}>
+                                                        <Eye size={15} />
+                                                    </button>
+                                                    <button className="btn-icon edit" title="Edit Patient" onClick={() => setEditingPatient(p)}>
+                                                        <Pencil size={15} />
+                                                    </button>
+                                                    <button
+                                                        className="btn-icon"
+                                                        title="Run AI Risk Score"
+                                                        onClick={() => scoreOne(p.patient_id)}
+                                                        disabled={scoringId === p.patient_id}
+                                                        style={{ color: '#8b5cf6' }}
+                                                    >
+                                                        {scoringId === p.patient_id
+                                                            ? <Loader2 size={15} className="spin" />
+                                                            : <Brain size={15} />
+                                                        }
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            </div>
+
+            {showModal && (
+                <PatientForm
+                    onClose={() => setShowModal(false)}
+                    onSuccess={loadPatients}
+                    currentUser={currentUser}
+                />
+            )}
+            {selectedPatient && (
+                <PatientDetailsModal
+                    patient={selectedPatient}
+                    onClose={() => setSelectedPatient(null)}
+                    onEdit={p => { setSelectedPatient(null); setEditingPatient(p); }}
+                />
+            )}
+            {editingPatient && (
+                <PatientEditForm
+                    patient={editingPatient}
+                    onClose={() => setEditingPatient(null)}
+                    onSuccess={() => { setEditingPatient(null); loadPatients(); }}
+                />
+            )}
         </div>
     );
 }
 
-export default PatientForm;
+export default Patients;

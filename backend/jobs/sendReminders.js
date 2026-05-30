@@ -51,7 +51,7 @@ const sendRemindersJob = async (daysAhead = 1) => {
             const pickupDate = convertToDisplayDate(patient.next_pickup_date);
             return {
                 phoneNumber: patient.phone_number,
-                message: `Hello ${name}, this is a reminder from ${patient.facility_name}. Your ARV medication pickup is due on ${pickupDate}. Please collect on time. Your health matters!`,
+                message: `Hello ${name}, this is a gentle reminder .Your pickup is due on ${pickupDate}. Please collect on time.Take care!`,
                 patientId: patient.patient_id
             };
         });
@@ -63,9 +63,9 @@ const sendRemindersJob = async (daysAhead = 1) => {
 
         result.results?.forEach(r => {
             if (r.success) {
-                console.log(`  ✅ Sent to ${r.patientId} → SID: ${r.messageSid}`);
+                console.log(`   Sent to ${r.patientId} → SID: ${r.messageSid}`);
             } else {
-                console.log(`  ❌ Failed for ${r.patientId} → ${r.error}`);
+                console.log(`   Failed for ${r.patientId} → ${r.error}`);
             }
         });
 

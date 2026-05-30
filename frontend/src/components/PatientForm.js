@@ -15,6 +15,8 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
 
     const [form, setForm] = useState({
         patient_id:                    '',
+        first_name:                    '',
+        last_name:                     '',
         facility_id:                   currentUser?.clinic_number || '',
         sex:                           '',
         date_of_birth:                 '',
@@ -124,6 +126,28 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                     {/* ── Patient Identification ── */}
                     <div className="form-section">
                         <h3 className="section-title"><Building2 size={16} /> Patient Identification</h3>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>First Name <span className="required">*</span></label>
+                                <input
+                                    name="first_name"
+                                    value={form.first_name}
+                                    onChange={handleChange}
+                                    placeholder="e.g. Tendai"
+                                    required
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Last Name <span className="required">*</span></label>
+                                <input
+                                    name="last_name"
+                                    value={form.last_name}
+                                    onChange={handleChange}
+                                    placeholder="e.g. Moyo"
+                                    required
+                                />
+                            </div>
+                        </div>
                         <div className="form-row">
                             <div className="form-group">
                                 <label>Patient ID (auto-generated if blank)</label>

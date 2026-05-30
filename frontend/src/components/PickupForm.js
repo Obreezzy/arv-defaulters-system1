@@ -77,13 +77,17 @@ function PickupForm({ isOpen, onClose, onSuccess, preselectedPatient = null, cur
     }
   };
 
-  // Search by patient_id or district/village (new schema has no first_name/last_name)
+  // Search by patient_id, name, district or village
   const filteredPatients = patients.filter(p => {
-    const term = searchQuery.toLowerCase();
+    const term = searchQuery.toLowerCase().trim();
+    if (!term) return true;
     return (
-      (p.patient_id  || '').toLowerCase().includes(term) ||
-      (p.residence_district || '').toLowerCase().includes(term) ||
-      (p.residence_village  || '').toLowerCase().includes(term)
+      (p.patient_id             || '').toLowerCase().includes(term) ||
+      (p.first_name             || '').toLowerCase().includes(term) ||
+      (p.last_name              || '').toLowerCase().includes(term) ||
+      (`${p.first_name || ''} ${p.last_name || ''}`).toLowerCase().includes(term) ||
+      (p.residence_district     || '').toLowerCase().includes(term) ||
+      (p.residence_village      || '').toLowerCase().includes(term)
     );
   });
 

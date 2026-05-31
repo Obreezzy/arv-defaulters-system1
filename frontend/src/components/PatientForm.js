@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { User, MapPin, Heart, Phone, X, UserPlus } from 'lucide-react';
+import { User, MapPin, Heart, Phone, X, UserPlus, Building2 } from 'lucide-react';
 import './PatientForm.css';
 import { patientsAPI, facilitiesAPI } from '../services/api';
 import { useNotifications } from '../contexts/NotificationContext';
 
 function PatientForm({ onClose, onSuccess, currentUser }) {
     const { showToast, addNotification } = useNotifications();
+
+    const isNurse = currentUser?.role === 'healthcare_worker';
 
     const [loading, setLoading]       = useState(false);
     const [success, setSuccess]       = useState(false);
@@ -16,7 +18,9 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
         patient_id:                    '',
         first_name:                    '',
         last_name:                     '',
-        facility_id:                   '',
+        // facility_id auto-filled for nurses from their clinic_number
+        facility_id:                   isNurse ? (currentUser?.clinic_number || '') : '',
+        registered_by:                 currentUser?.nurse_number || currentUser?.staff_id || '',
         sex:                           '',
         date_of_birth:                 '',
         art_start_date:                '',
@@ -38,18 +42,31 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
         disclosure_status:             '',
     });
 
-    // Load facilities for dropdown — GPS is fetched silently by backend on submit
+    // Re-sync nurse fields if currentUser loads after mount
     useEffect(() => {
-        const load = async () => {
-            try {
-                const res = await facilitiesAPI.getAll();
-                setFacilities(res.facilities || res.data || []);
-            } catch (e) {
-                console.error('Could not load facilities:', e);
-            }
-        };
-        load();
-    }, []);
+        if (isNurse) {
+            setFormData(prev => ({
+                ...prev,
+                facility_id:    currentUser?.clinic_number || prev.facility_id,
+                registered_by:  currentUser?.nurse_number  || currentUser?.staff_id || prev.registered_by,
+            }));
+        }
+    }, [currentUser, isNurse]);
+
+    // Load facilities for admin dropdown only
+    useEffect(() => {
+        if (!isNurse) {
+            const load = async () => {
+                try {
+                    const res = await facilitiesAPI.getAll();
+                    setFacilities(res.facilities || res.data || []);
+                } catch (e) {
+                    console.error('Could not load facilities:', e);
+                }
+            };
+            load();
+        }
+    }, [isNurse]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -75,7 +92,7 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
             Object.entries(formData).forEach(([k, v]) => {
                 payload[k] = v === '' ? null : v;
             });
-            // GPS lat/lon NOT sent from frontend — backend auto-fills from facility record
+            // GPS lat/lon NOT sent — backend auto-fills from facility record
 
             await patientsAPI.createPatient(payload);
 
@@ -84,7 +101,7 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
             addNotification({
                 type: 'patient',
                 title: 'New Patient Registered',
-                message: `Patient ${formData.patient_id || '(auto-ID)'} added`,
+                message: `Patient ${formData.patient_id || '(auto-ID)'} added by ${currentUser?.full_name || 'staff'}`,
                 showToast: false,
             });
 
@@ -99,6 +116,14 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
         } finally {
             setLoading(false);
         }
+    };
+
+    const lockedStyle = {
+        backgroundColor: '#f0fdf4',
+        color: '#166534',
+        fontWeight: '600',
+        border: '2px solid #bbf7d0',
+        cursor: 'not-allowed'
     };
 
     if (success) {
@@ -121,6 +146,18 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                     <h2><UserPlus size={18} /> New Patient</h2>
                     <button className="close-button" onClick={onClose}><X size={18} /></button>
                 </div>
+
+                {/* Nurse auto-fill banner */}
+                {isNurse && (
+                    <div style={{
+                        background: '#f0fdf4', border: '1px solid #bbf7d0',
+                        borderRadius: '8px', padding: '0.6rem 1rem',
+                        margin: '0 2rem', fontSize: '0.82rem', color: '#166534'
+                    }}>
+                        Logged in as <strong>{currentUser.full_name}</strong> —
+                        facility and nurse number auto-filled.
+                    </div>
+                )}
 
                 {error && <div className="form-error">⚠ {error}</div>}
 
@@ -146,14 +183,37 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                             </div>
                             <div className="form-group">
                                 <label>Facility <span style={{ color: '#ef4444' }}>*</span></label>
-                                <select name="facility_id" value={formData.facility_id} onChange={handleChange} required>
-                                    <option value="">Select facility...</option>
-                                    {facilities.map(f => (
-                                        <option key={f.facility_id} value={f.facility_id}>
-                                            {f.facility_name}
-                                        </option>
-                                    ))}
-                                </select>
+                                {isNurse ? (
+                                    <>
+                                        <input type="text" value={formData.facility_id} readOnly style={lockedStyle} />
+                                        <small style={{ color: '#166534' }}>Auto-filled from your account</small>
+                                    </>
+                                ) : (
+                                    <select name="facility_id" value={formData.facility_id} onChange={handleChange} required>
+                                        <option value="">Select facility...</option>
+                                        {facilities.map(f => (
+                                            <option key={f.facility_id} value={f.facility_id}>
+                                                {f.facility_name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Nurse number — auto-filled, read-only */}
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Registered By (Nurse/Staff Number)</label>
+                                {isNurse ? (
+                                    <>
+                                        <input type="text" value={formData.registered_by} readOnly style={lockedStyle} />
+                                        <small style={{ color: '#166534' }}>Auto-filled from your account</small>
+                                    </>
+                                ) : (
+                                    <input name="registered_by" value={formData.registered_by} onChange={handleChange}
+                                        placeholder="e.g. NRS-001 or STF-001" />
+                                )}
                             </div>
                         </div>
                     </div>
@@ -324,7 +384,6 @@ function PatientForm({ onClose, onSuccess, currentUser }) {
                                 : <><UserPlus size={15} /> Register Patient</>}
                         </button>
                     </div>
-
                 </form>
             </div>
         </div>

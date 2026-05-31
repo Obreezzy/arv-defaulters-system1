@@ -102,6 +102,17 @@ scheduler.startScheduler();
 const { checkMLHealth } = require('./services/riskEngine');
 checkMLHealth();
 
+// ── Keep ML API alive (free tier spins down after 15min) ─────────
+const axios = require('axios');
+setInterval(async () => {
+    try {
+        await axios.get(`${process.env.ML_API_URL || 'http://localhost:5000'}/health`, { timeout: 8000 });
+        console.log('[KEEP-ALIVE] ML API pinged successfully');
+    } catch (e) {
+        console.log('[KEEP-ALIVE] ML API ping failed — may be sleeping');
+    }
+}, 10 * 60 * 1000); // every 10 minutes
+
 // Start server
 app.listen(PORT, () => {
     console.log('\n========================================');

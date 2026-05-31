@@ -166,6 +166,7 @@ router.post('/', async (req, res) => {
         self_reported_travel_time_min, phone_available,
         phone_number, next_of_kin_name, next_of_kin_phone,
         marital_status, education_level, occupation, disclosure_status,
+        registered_by,
     } = req.body;
 
     if (!art_start_date) {
@@ -202,10 +203,10 @@ router.post('/', async (req, res) => {
                 self_reported_travel_time_min, phone_available,
                 phone_number, next_of_kin_name, next_of_kin_phone,
                 marital_status, education_level, occupation,
-                disclosure_status, exit_status
+                disclosure_status, registered_by, exit_status
             ) VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-                $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,'active'
+                $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,'active'
             ) RETURNING *
         `, [
             pid, facility_id, sex || null, date_of_birth || null, art_start_date,
@@ -216,6 +217,7 @@ router.post('/', async (req, res) => {
             phone_number || null, next_of_kin_name || null, next_of_kin_phone || null,
             marital_status || null, education_level || null, occupation || null,
             disclosure_status || null,
+            registered_by || null,
         ]);
 
         res.status(201).json({ success: true, patient: result.rows[0] });
@@ -239,6 +241,7 @@ router.put('/:id', async (req, res) => {
         self_reported_travel_time_min, phone_available,
         phone_number, next_of_kin_name, next_of_kin_phone,
         marital_status, education_level, occupation, disclosure_status,
+        registered_by,
     } = req.body;
 
     try {
@@ -289,12 +292,12 @@ router.post('/:id/predict', async (req, res) => {
         await query(`
             INSERT INTO risk_scores
               (patient_id, default_probability, predicted_default, risk_tier,
-               threshold_used, threshold_source)
-            VALUES ($1,$2,$3,$4,$5,$6)
+               threshold_used, threshold_source, warnings)
+            VALUES ($1,$2,$3,$4,$5,$6,$7)
         `, [
             id, risk.probability, risk.predicted_default,
             risk.label.toLowerCase(), risk.threshold_used,
-            risk.threshold_source,
+            risk.threshold_source, JSON.stringify(risk.warnings),
         ]);
 
         res.json({ success: true, patient_id: id, risk });
@@ -326,12 +329,12 @@ router.post('/predict', async (req, res) => {
             await query(`
                 INSERT INTO risk_scores
                   (patient_id, default_probability, predicted_default, risk_tier,
-                   threshold_used, threshold_source)
-                VALUES ($1,$2,$3,$4,$5,$6)
+                   threshold_used, threshold_source, warnings)
+                VALUES ($1,$2,$3,$4,$5,$6,$7)
             `, [
                 r.patient_id, r.probability, r.predicted_default,
                 r.label.toLowerCase(), r.threshold_used,
-                r.threshold_source,
+                r.threshold_source, JSON.stringify(r.warnings),
             ]);
         }
 

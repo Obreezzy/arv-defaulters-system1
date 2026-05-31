@@ -21,6 +21,7 @@ function Reports() {
 
  // Report filters
  const [selectedPatient, setSelectedPatient] = useState('');
+ const [patientSearch, setPatientSearch] = useState('');
  const [dateFrom, setDateFrom] = useState('');
  const [dateTo, setDateTo] = useState('');
  const [reportType, setReportType] = useState('summary');
@@ -433,16 +434,76 @@ function Reports() {
  {/* Filters */}
  <div className="report-filters">
  {reportType === 'patient' && (
- <div className="filter-group">
- <label>Select Patient</label>
- <select value={selectedPatient} onChange={e => setSelectedPatient(e.target.value)}>
- <option value="">-- Choose a patient --</option>
- {patientsData.map(p => (
- <option key={p.patient_id} value={p.patient_id}>
- {p.patient_id} {p.residence_district ? `- ${p.residence_district}` : ''}
- </option>
- ))}
- </select>
+ <div className="filter-group" style={{ position: 'relative', minWidth: '280px' }}>
+ <label>Search Patient</label>
+ <input
+   type="text"
+   placeholder="Type ID, name, or district..."
+   value={patientSearch}
+   onChange={e => { setPatientSearch(e.target.value); setSelectedPatient(''); }}
+   style={{
+     width: '100%', padding: '0.5rem 0.75rem',
+     border: selectedPatient ? '2px solid #3b82f6' : '1px solid #d1d5db',
+     borderRadius: '6px', fontSize: '0.875rem', boxSizing: 'border-box'
+   }}
+ />
+ {patientSearch && !selectedPatient && (
+   <div style={{
+     position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+     background: 'white', border: '1px solid #e5e7eb', borderRadius: '6px',
+     boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: '200px', overflowY: 'auto'
+   }}>
+     {patientsData
+       .filter(p => {
+         const s = patientSearch.toLowerCase();
+         return (
+           (p.patient_id || '').toLowerCase().includes(s) ||
+           (p.first_name || '').toLowerCase().includes(s) ||
+           (p.last_name || '').toLowerCase().includes(s) ||
+           (`${p.first_name || ''} ${p.last_name || ''}`).toLowerCase().includes(s) ||
+           (p.residence_district || '').toLowerCase().includes(s)
+         );
+       })
+       .slice(0, 20)
+       .map(p => (
+         <div
+           key={p.patient_id}
+           onClick={() => { setSelectedPatient(p.patient_id); setPatientSearch(`${p.patient_id}${p.first_name ? ' — ' + p.first_name + ' ' + (p.last_name || '') : ''}${p.residence_district ? ' · ' + p.residence_district : ''}`); }}
+           style={{
+             padding: '0.5rem 0.75rem', cursor: 'pointer', fontSize: '0.85rem',
+             borderBottom: '1px solid #f3f4f6'
+           }}
+           onMouseEnter={e => e.target.style.background = '#eff6ff'}
+           onMouseLeave={e => e.target.style.background = 'white'}
+         >
+           <strong>{p.patient_id}</strong>
+           {(p.first_name || p.last_name) && <span style={{ color: '#374151' }}> — {p.first_name} {p.last_name}</span>}
+           {p.residence_district && <span style={{ color: '#6b7280' }}> · {p.residence_district}</span>}
+         </div>
+       ))
+     }
+     {patientsData.filter(p => {
+       const s = patientSearch.toLowerCase();
+       return (p.patient_id || '').toLowerCase().includes(s) ||
+         (p.first_name || '').toLowerCase().includes(s) ||
+         (p.last_name || '').toLowerCase().includes(s) ||
+         (p.residence_district || '').toLowerCase().includes(s);
+     }).length === 0 && (
+       <div style={{ padding: '0.75rem', color: '#9ca3af', fontSize: '0.85rem' }}>
+         No patients found
+       </div>
+     )}
+   </div>
+ )}
+ {selectedPatient && (
+   <small style={{ color: '#3b82f6', fontSize: '0.75rem' }}>
+     ✓ Selected: {selectedPatient} &nbsp;
+     <span style={{ cursor: 'pointer', textDecoration: 'underline' }}
+       onClick={() => { setSelectedPatient(''); setPatientSearch(''); }}>
+       Clear
+     </span>
+   </small>
+ )}
  </div>
  )}
  <div className="filter-group">

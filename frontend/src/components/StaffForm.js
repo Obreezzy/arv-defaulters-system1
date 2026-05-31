@@ -7,6 +7,8 @@ function StaffForm({ onClose, onSuccess }) {
   const [loading, setLoading]       = useState(false);
   const [formError, setFormError]   = useState('');
   const [facilities, setFacilities] = useState([]);
+  const [facilitySearch, setFacilitySearch] = useState('');
+  const [facilityDropdownOpen, setFacilityDropdownOpen] = useState(false);
 
   const [formData, setFormData] = useState({
     full_name:     '',
@@ -180,24 +182,82 @@ function StaffForm({ onClose, onSuccess }) {
 
               <div className="form-group">
                 <label>Assign to Facility <span style={{ color: '#ef4444' }}>*</span></label>
-                <select
-                  name="facility_id"
-                  value={formData.facility_id}
-                  onChange={handleChange}
-                  required={needsClinic}
-                  style={{
-                    width: '100%', padding: '0.6rem', border: '1px solid #d1d5db',
-                    borderRadius: '6px', outline: 'none', fontSize: '0.875rem',
-                    backgroundColor: 'white'
+                <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder="Type facility name, district or ID..."
+                  value={facilitySearch}
+                  onFocus={() => setFacilityDropdownOpen(true)}
+                  onChange={e => {
+                    setFacilitySearch(e.target.value);
+                    setFacilityDropdownOpen(true);
+                    // Clear selection if user types again
+                    if (formData.facility_id) {
+                      setFormData(prev => ({ ...prev, facility_id: '', clinic_name: '', clinic_number: '' }));
+                    }
                   }}
-                >
-                  <option value="">Select a facility...</option>
-                  {facilities.map(f => (
-                    <option key={f.facility_id} value={f.facility_id}>
-                      {f.facility_name} — {f.district}, {f.province} ({f.catchment_type})
-                    </option>
-                  ))}
-                </select>
+                  style={{
+                    width: '100%', padding: '0.6rem', boxSizing: 'border-box',
+                    border: formData.facility_id ? '2px solid #3b82f6' : '1px solid #d1d5db',
+                    borderRadius: '6px', fontSize: '0.875rem'
+                  }}
+                />
+                {facilityDropdownOpen && facilitySearch && !formData.facility_id && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
+                    background: 'white', border: '1px solid #e5e7eb', borderRadius: '6px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.12)', maxHeight: '220px', overflowY: 'auto'
+                  }}>
+                    {facilities
+                      .filter(f => {
+                        const s = facilitySearch.toLowerCase();
+                        return (
+                          (f.facility_name || '').toLowerCase().includes(s) ||
+                          (f.facility_id || '').toLowerCase().includes(s) ||
+                          (f.district || '').toLowerCase().includes(s) ||
+                          (f.province || '').toLowerCase().includes(s)
+                        );
+                      })
+                      .map(f => (
+                        <div
+                          key={f.facility_id}
+                          onClick={() => {
+                            setFacilitySearch(f.facility_name);
+                            setFacilityDropdownOpen(false);
+                            setFormData(prev => ({
+                              ...prev,
+                              facility_id:   f.facility_id,
+                              clinic_name:   f.facility_name,
+                              clinic_number: f.facility_id
+                            }));
+                          }}
+                          style={{
+                            padding: '0.5rem 0.75rem', cursor: 'pointer',
+                            fontSize: '0.82rem', borderBottom: '1px solid #f3f4f6'
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'white'}
+                        >
+                          <strong>{f.facility_name}</strong>
+                          <span style={{ color: '#6b7280', fontSize: '0.78rem' }}>
+                            {' '}— {f.district}, {f.province} · <em>{f.catchment_type}</em> · <code>{f.facility_id}</code>
+                          </span>
+                        </div>
+                      ))
+                    }
+                    {facilities.filter(f => {
+                      const s = facilitySearch.toLowerCase();
+                      return (f.facility_name || '').toLowerCase().includes(s) ||
+                        (f.facility_id || '').toLowerCase().includes(s) ||
+                        (f.district || '').toLowerCase().includes(s);
+                    }).length === 0 && (
+                      <div style={{ padding: '0.75rem', color: '#9ca3af', fontSize: '0.82rem' }}>
+                        No facilities found
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
                 <small style={{ color: '#6b7280', fontSize: '0.75rem' }}>
                   Their clinic details will auto-fill from this selection
                 </small>

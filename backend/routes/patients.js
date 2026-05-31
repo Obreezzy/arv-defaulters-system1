@@ -289,12 +289,12 @@ router.post('/:id/predict', async (req, res) => {
         await query(`
             INSERT INTO risk_scores
               (patient_id, default_probability, predicted_default, risk_tier,
-               threshold_used, threshold_source, warnings)
-            VALUES ($1,$2,$3,$4,$5,$6,$7)
+               threshold_used, threshold_source)
+            VALUES ($1,$2,$3,$4,$5,$6)
         `, [
             id, risk.probability, risk.predicted_default,
             risk.label.toLowerCase(), risk.threshold_used,
-            risk.threshold_source, JSON.stringify(risk.warnings),
+            risk.threshold_source,
         ]);
 
         res.json({ success: true, patient_id: id, risk });
@@ -326,12 +326,12 @@ router.post('/predict', async (req, res) => {
             await query(`
                 INSERT INTO risk_scores
                   (patient_id, default_probability, predicted_default, risk_tier,
-                   threshold_used, threshold_source, warnings)
-                VALUES ($1,$2,$3,$4,$5,$6,$7)
+                   threshold_used, threshold_source)
+                VALUES ($1,$2,$3,$4,$5,$6)
             `, [
                 r.patient_id, r.probability, r.predicted_default,
                 r.label.toLowerCase(), r.threshold_used,
-                r.threshold_source, JSON.stringify(r.warnings),
+                r.threshold_source,
             ]);
         }
 
